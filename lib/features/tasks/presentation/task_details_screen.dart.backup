@@ -1,0 +1,317 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import 'package:uuid/uuid.dart';
+import '../data/task_local_model.dart';
+import '../data/checklist_item_model.dart';
+import '../providers/tasks_providers.dart';
+import '../../../core/utils/arabic_numbers.dart';
+
+class TaskDetailsScreen extends ConsumerStatefulWidget {
+  final TaskLocalModel task;
+
+  const TaskDetailsScreen({super.key, required this.task});
+
+  @override
+  ConsumerState<TaskDetailsScreen> createState() => _TaskDetailsScreenState();
+}
+
+class _TaskDetailsScreenState extends ConsumerState<TaskDetailsScreen> {
+  late List<ChecklistItem> _checklistItems;
+  final TextEditingController _newItemController = TextEditingController();
+  final _uuid = const Uuid();
+
+  @override
+  void initState() {
+    super.initState();
+    // Parse existing checklist from description or custom field
+    // For now, we'll use description as JSON storage
+    _checklistItems = _parseChecklistFromDescription(widget.task.description);
+  }
+
+  List<ChecklistItem> _parseChecklistFromDescription(String? description) {
+    if (description == null || description.isEmpty) return [];
+    
+    // Try to parse as JSON first
+    try {
+      return ChecklistHelper.decodeChecklist(description);
+    } catch (e) {
+      // If not JSON, treat as plain text (legacy support)
+      return [];
+    }
+  }
+
+  @override
+  void dispose() {
+    _newItemController.dispose();
+    super.dispose();
+  }
+
+  void _addChecklistItem() {
+    final title = _newItemController.text.trim();
+    if (title.isEmpty) return;
+
+    setState(() {
+      _checklistItems.add(ChecklistItem(
+        id: _uuid.v4(),
+        title: title,
+        isCompleted: false,
+      ));
+    });
+
+    _newItemController.clear();
+    _saveChecklist();
+  }
+
+  void _toggleChecklistItem(int index) {
+    setState(() {
+      _checklistItems[index] = _checklistItems[index].copyWith(
+        isCompleted: !_checklistItems[index].isCompleted,
+      );
+    });
+    _saveChecklist();
+  }
+
+  void _deleteChecklistItem(int index) {
+    setState(() {
+      _checklistItems.removeAt(index);
+    });
+    _saveChecklist();
+  }
+
+  Future<void> _saveChecklist() async {
+    // Save checklist as JSON in description field
+    final checklistJson = ChecklistHelper.encodeChecklist(_checklistItems);
+    
+    final updatedTask = widget.task.copyWith(
+      description: checklistJson,
+      updatedAt: DateTime.now(),
+    );
+
+    await ref.read(tasksProvider.notifier).updateTask(updatedTask);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dateFormat = DateFormat('yyyy-MM-dd', 'ar');
+    final completionPercentage =
+        ChecklistHelper.getCompletionPercentage(_checklistItems);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('تفاصيل المهمة'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () {
+              // TODO: Navigate to edit screen
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('التعديل قريباً')),
+              );
+            },
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Task Header
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Theme.of(context).colorScheme.primary,
+                  Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                ],
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.task.title,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    _buildInfoChip(
+                      icon: Icons.flag,
+                      label: _getPriorityLabel(widget.task.priority),
+                      color: _getPriorityColor(widget.task.priority),
+                    ),
+                    const SizedBox(width: 8),
+                    if (widget.task.dueDate != null)
+                      _buildInfoChip(
+                        icon: Icons.calendar_today,
+                        label: ArabicNumbers.formatDate(
+                          dateFormat.format(widget.task.dueDate!),
+                        ),
+                        color: widget.task.isOverdue
+                            ? Colors.red
+                            : Colors.blue,
+                      ),
+                  ],
+                ),
+                if (_checklistItems.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  LinearProgressIndicator(
+                    value: completionPercentage / 100,
+                    backgroundColor: Colors.white.withOpacity(0.3),
+                    valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                    minHeight: 8,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${completionPercentage.toStringAsFixed(0)}% مكتمل',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Checklist Items
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _checklistItems.length,
+              itemBuilder: (context, index) {
+                final item = _checklistItems[index];
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: ListTile(
+                    leading: Checkbox(
+                      value: item.isCompleted,
+                      onChanged: (_) => _toggleChecklistItem(index),
+                      shape: const CircleBorder(),
+                    ),
+                    title: Text(
+                      item.title,
+                      style: TextStyle(
+                        decoration: item.isCompleted
+                            ? TextDecoration.lineThrough
+                            : null,
+                        color: item.isCompleted ? Colors.grey : null,
+                      ),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: () => _deleteChecklistItem(index),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // Add Item Field
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 4,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _newItemController,
+                    decoration: const InputDecoration(
+                      hintText: 'أضف عنصر جديد...',
+                      border: OutlineInputBorder(),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                    ),
+                    onSubmitted: (_) => _addChecklistItem(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  onPressed: _addChecklistItem,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.all(16),
+                    shape: const CircleBorder(),
+                  ),
+                  child: const Icon(Icons.add),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _getPriorityLabel(String priority) {
+    switch (priority) {
+      case 'high':
+        return 'عالية';
+      case 'medium':
+        return 'متوسطة';
+      case 'low':
+        return 'منخفضة';
+      default:
+        return 'عادية';
+    }
+  }
+
+  Color _getPriorityColor(String priority) {
+    switch (priority) {
+      case 'high':
+        return Colors.red;
+      case 'medium':
+        return Colors.orange;
+      case 'low':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+}
