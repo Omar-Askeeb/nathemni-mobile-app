@@ -21,7 +21,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       path,
-      version: 7, // Incremented for debt_payments table
+      version: 9, // Incremented for car management tables
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -66,6 +66,9 @@ class DatabaseHelper {
     await _createSimCardsTable(db);
     await _createBankAccountsTable(db);
     await _createSyncQueueTable(db);
+    await _createMealsTable(db);
+    await _createMealLogsTable(db);
+    await _createCarManagementTables(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -105,7 +108,17 @@ class DatabaseHelper {
     }
     if (oldVersion < 7) {
       // Add debt_payments table for version 7
+      // Add debt_payments table for version 7
       await _createDebtPaymentsTable(db);
+    }
+    if (oldVersion < 8) {
+      // Add meals & meal_logs tables for version 8
+      await _createMealsTable(db);
+      await _createMealLogsTable(db);
+    }
+    if (oldVersion < 9) {
+      // Add car management tables for version 9
+      await _createCarManagementTables(db);
     }
   }
 
@@ -585,6 +598,164 @@ class DatabaseHelper {
         'CREATE INDEX idx_sync_queue_status ON sync_queue(status, created_at)');
   }
 
+  Future<void> _createMealsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE meals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_id INTEGER,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        categories TEXT, -- JSON or comma-separated
+        image_path TEXT,
+        ingredients TEXT, -- JSON
+        recipe_steps TEXT, -- JSON
+        rating REAL,
+        is_synced INTEGER DEFAULT 0,
+        sync_id TEXT,
+        created_offline INTEGER DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT,
+        deleted_at TEXT,
+        sync_status TEXT DEFAULT 'pending',
+        last_modified TEXT,
+        UNIQUE(server_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_meals_user ON meals(user_id)');
+  }
+
+  Future<void> _createMealLogsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE meal_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_id INTEGER,
+        user_id INTEGER NOT NULL,
+        meal_id INTEGER NOT NULL,
+        meal_type TEXT NOT NULL, -- breakfast, lunch, dinner, snack
+        eaten_at TEXT NOT NULL,
+        notes TEXT,
+        is_synced INTEGER DEFAULT 0,
+        sync_id TEXT,
+        created_offline INTEGER DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT,
+        deleted_at TEXT,
+        sync_status TEXT DEFAULT 'pending',
+        last_modified TEXT,
+        UNIQUE(server_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (meal_id) REFERENCES meals(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute(
+        'CREATE INDEX idx_meal_logs_user_date ON meal_logs(user_id, eaten_at)');
+    await db.execute(
+        'CREATE INDEX idx_meal_logs_meal ON meal_logs(meal_id)');
+  }
+
+  Future<void> _createCarManagementTables(Database db) async {
+    // Cars table
+    await db.execute('''
+      CREATE TABLE cars (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_id INTEGER,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        model TEXT,
+        year INTEGER,
+        plate_number TEXT,
+        current_odometer REAL,
+        notes TEXT,
+        is_synced INTEGER DEFAULT 0,
+        sync_id TEXT,
+        created_offline INTEGER DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT,
+        deleted_at TEXT,
+        sync_status TEXT DEFAULT 'pending',
+        last_modified TEXT,
+        UNIQUE(server_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('CREATE INDEX idx_cars_user ON cars(user_id)');
+
+    // Car oil changes table
+    await db.execute('''
+      CREATE TABLE car_oil_changes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_id INTEGER,
+        car_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        change_date TEXT NOT NULL,
+        odometer REAL NOT NULL,
+        cost REAL NOT NULL,
+        currency TEXT DEFAULT 'LYD',
+        oil_type TEXT,
+        oil_viscosity TEXT,
+        filter_changed INTEGER DEFAULT 0,
+        expected_distance REAL,
+        next_change_odometer REAL,
+        payment_method TEXT DEFAULT 'cash',
+        notes TEXT,
+        is_synced INTEGER DEFAULT 0,
+        sync_id TEXT,
+        created_offline INTEGER DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT,
+        deleted_at TEXT,
+        sync_status TEXT DEFAULT 'pending',
+        last_modified TEXT,
+        UNIQUE(server_id),
+        FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute(
+        'CREATE INDEX idx_oil_changes_car ON car_oil_changes(car_id, change_date)');
+
+    // Car documents table (insurance, tax, inspection)
+    await db.execute('''
+      CREATE TABLE car_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        server_id INTEGER,
+        car_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        document_type TEXT NOT NULL,
+        renewal_date TEXT NOT NULL,
+        expiry_date TEXT NOT NULL,
+        cost REAL NOT NULL,
+        currency TEXT DEFAULT 'LYD',
+        place_name TEXT,
+        place_contact TEXT,
+        payment_method TEXT DEFAULT 'cash',
+        notification_id INTEGER,
+        notes TEXT,
+        is_synced INTEGER DEFAULT 0,
+        sync_id TEXT,
+        created_offline INTEGER DEFAULT 0,
+        created_at TEXT,
+        updated_at TEXT,
+        deleted_at TEXT,
+        sync_status TEXT DEFAULT 'pending',
+        last_modified TEXT,
+        UNIQUE(server_id),
+        FOREIGN KEY (car_id) REFERENCES cars(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute(
+        'CREATE INDEX idx_car_documents_car ON car_documents(car_id, document_type)');
+    await db.execute(
+        'CREATE INDEX idx_car_documents_expiry ON car_documents(user_id, expiry_date)');
+  }
+
   // ========================================
   // DATABASE OPERATIONS
   // ========================================
@@ -592,6 +763,11 @@ class DatabaseHelper {
   Future<void> clearDatabase() async {
     final db = await database;
     await db.delete('sync_queue');
+    await db.delete('car_documents');
+    await db.delete('car_oil_changes');
+    await db.delete('cars');
+    await db.delete('meal_logs');
+    await db.delete('meals');
     await db.delete('equipment_cleaning_tasks');
     await db.delete('equipment_lendings');
     await db.delete('equipment');

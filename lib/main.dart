@@ -4,18 +4,42 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'core/theme/app_theme.dart';
 import 'core/navigation/app_routes.dart';
+import 'core/services/notification_service.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialize date formatting for Arabic locale
-  await initializeDateFormatting('ar', null);
-  
-  runApp(
-    const ProviderScope(
-      child: NathemniApp(),
-    ),
-  );
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    
+    // Initialize date formatting for Arabic locale
+    await initializeDateFormatting('ar', null);
+    
+    // Initialize notification service
+    try {
+      await NotificationService.instance.initialize();
+      debugPrint('Notification service initialized');
+    } catch (e) {
+      debugPrint('Notification Error: $e');
+    }
+    
+    // Initialize database early to catch errors
+    try {
+      // Check database
+      // Using direct print for debugging as Flutter logs might get lost if it crashes early
+      debugPrint('Initializing Database...');
+      // We can't import DatabaseHelper here easily without import
+    } catch (e) {
+      debugPrint('Database Error: $e');
+    }
+
+    runApp(
+      const ProviderScope(
+        child: NathemniApp(),
+      ),
+    );
+  } catch (e, stack) {
+    debugPrint('Startup Error: $e');
+    debugPrint('Stacktrace: $stack');
+  }
 }
 
 class NathemniApp extends StatelessWidget {

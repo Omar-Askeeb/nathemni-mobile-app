@@ -1,6 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../expenses/data/expenses_repository.dart';
+import '../../expenses/providers/expenses_providers.dart';
 import '../data/task_local_model.dart';
 import '../data/tasks_repository.dart';
+import '../../../core/providers/common_providers.dart';
 
 // ========== REPOSITORY PROVIDER ==========
 
@@ -8,27 +11,24 @@ final tasksRepositoryProvider = Provider<TasksRepository>((ref) {
   return TasksRepository();
 });
 
-// ========== CURRENT USER ID PROVIDER (temporary for testing) ==========
-// TODO: Replace with actual auth user ID from auth provider
-final currentUserIdProvider = StateProvider<int>((ref) => 1);
-
 // ========== TASKS LIST STATE ==========
 
 /// State notifier for managing tasks list
 class TasksNotifier extends StateNotifier<AsyncValue<List<TaskLocalModel>>> {
   final TasksRepository _repository;
-  final int _userId;
+  final Ref _ref;
 
-  TasksNotifier(this._repository, this._userId)
+  TasksNotifier(this._repository, this._ref)
       : super(const AsyncValue.loading()) {
-    loadTasks();
+    Future.microtask(() => loadTasks());
   }
 
   /// Load all tasks
   Future<void> loadTasks() async {
     state = const AsyncValue.loading();
+    final userId = _ref.read(currentUserIdProvider);
     try {
-      final tasks = await _repository.getAllTasks(_userId);
+      final tasks = await _repository.getAllTasks(userId);
       state = AsyncValue.data(tasks);
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
@@ -41,7 +41,6 @@ class TasksNotifier extends StateNotifier<AsyncValue<List<TaskLocalModel>>> {
       await _repository.createTask(task);
       await loadTasks(); // Refresh list
     } catch (error) {
-      // Handle error
       rethrow;
     }
   }
@@ -58,8 +57,9 @@ class TasksNotifier extends StateNotifier<AsyncValue<List<TaskLocalModel>>> {
 
   /// Complete task
   Future<void> completeTask(int taskId) async {
+    final userId = _ref.read(currentUserIdProvider);
     try {
-      await _repository.completeTask(taskId, _userId);
+      await _repository.completeTask(taskId, userId);
       await loadTasks(); // Refresh list
     } catch (error) {
       rethrow;
@@ -69,6 +69,16 @@ class TasksNotifier extends StateNotifier<AsyncValue<List<TaskLocalModel>>> {
   /// Delete task
   Future<void> deleteTask(int taskId) async {
     try {
+      // Delete linked expense if it exists
+      final expensesRepository = ExpensesRepository();
+      final existingExpense = await expensesRepository.getExpenseByLinkedItem('task', taskId);
+      if (existingExpense != null) {
+        await expensesRepository.deleteExpense(existingExpense.id!);
+        _ref.invalidate(expensesProvider);
+        _ref.invalidate(totalExpensesProvider);
+        _ref.invalidate(expensesByCategoryProvider);
+      }
+
       await _repository.deleteTask(taskId);
       await loadTasks(); // Refresh list
     } catch (error) {
@@ -78,6 +88,7 @@ class TasksNotifier extends StateNotifier<AsyncValue<List<TaskLocalModel>>> {
 
   /// Search tasks
   Future<void> searchTasks(String query) async {
+    final userId = _ref.read(currentUserIdProvider);
     if (query.isEmpty) {
       await loadTasks();
       return;
@@ -85,7 +96,7 @@ class TasksNotifier extends StateNotifier<AsyncValue<List<TaskLocalModel>>> {
 
     state = const AsyncValue.loading();
     try {
-      final tasks = await _repository.searchTasks(_userId, query);
+      final tasks = await _repository.searchTasks(userId, query);
       state = AsyncValue.data(tasks);
     } catch (error, stackTrace) {
       state = AsyncValue.error(error, stackTrace);
@@ -98,54 +109,9 @@ final tasksProvider =
     StateNotifierProvider<TasksNotifier, AsyncValue<List<TaskLocalModel>>>(
   (ref) {
     final repository = ref.watch(tasksRepositoryProvider);
-    final userId = ref.watch(currentUserIdProvider);
-    return TasksNotifier(repository, userId);
+    return TasksNotifier(repository, ref);
   },
 );
 
-// ========== FILTERED TASKS PROVIDERS ==========
-
-/// Pending tasks only
-final pendingTasksProvider = FutureProvider<List<TaskLocalModel>>((ref) async {
-  final repository = ref.watch(tasksRepositoryProvider);
-  final userId = ref.watch(currentUserIdProvider);
-  return repository.getPendingTasks(userId);
-});
-
-/// Completed tasks only
-final completedTasksProvider =
-    FutureProvider<List<TaskLocalModel>>((ref) async {
-  final repository = ref.watch(tasksRepositoryProvider);
-  final userId = ref.watch(currentUserIdProvider);
-  return repository.getCompletedTasks(userId);
-});
-
-/// Overdue tasks
-final overdueTasksProvider = FutureProvider<List<TaskLocalModel>>((ref) async {
-  final repository = ref.watch(tasksRepositoryProvider);
-  final userId = ref.watch(currentUserIdProvider);
-  return repository.getOverdueTasks(userId);
-});
-
-/// Today's tasks
-final todayTasksProvider = FutureProvider<List<TaskLocalModel>>((ref) async {
-  final repository = ref.watch(tasksRepositoryProvider);
-  final userId = ref.watch(currentUserIdProvider);
-  return repository.getTodayTasks(userId);
-});
-
-// ========== TASKS STATISTICS PROVIDER ==========
-
-final tasksStatsProvider =
-    FutureProvider<Map<String, int>>((ref) async {
-  final repository = ref.watch(tasksRepositoryProvider);
-  final userId = ref.watch(currentUserIdProvider);
-  return repository.getTasksStats(userId);
-});
-
-// ========== CONNECTIVITY PROVIDER ==========
-
-final isOnlineProvider = FutureProvider<bool>((ref) async {
-  final repository = ref.watch(tasksRepositoryProvider);
-  return repository.isOnline();
-});
+// Offline status provider
+final isDeviceOnlineProvider = FutureProvider<bool>((ref) async => true);

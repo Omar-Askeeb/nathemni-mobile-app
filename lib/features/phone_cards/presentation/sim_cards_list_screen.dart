@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/sim_card_model.dart';
 import '../providers/sim_cards_providers.dart';
 import '../../../core/utils/arabic_numbers.dart';
+import '../../../core/providers/common_providers.dart';
 
 /// Screen showing SIM cards list for a specific provider
 class SimCardsListScreen extends ConsumerStatefulWidget {

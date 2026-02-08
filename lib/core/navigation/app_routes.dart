@@ -9,6 +9,8 @@ import '../../features/bank_accounts/presentation/bank_accounts_screen.dart';
 import '../../features/expenses/presentation/expenses_screen.dart';
 import '../../features/people/presentation/people_screen.dart';
 import '../../features/commitments/presentation/commitments_screen.dart';
+import '../../features/meals/presentation/meals_screen.dart';
+import '../../features/car_management/presentation/car_dashboard_screen.dart';
 import '../widgets/placeholder_screen.dart';
 
 class AppRoutes {
@@ -39,11 +41,7 @@ class AppRoutes {
       addTask: (context) => const AddTaskScreen(),
 
       // Placeholder screens for modules under development
-      meals: (context) => const PlaceholderScreen(
-            title: 'إدارة الوجبات',
-            icon: Icons.restaurant_menu,
-            color: Colors.orange,
-          ),
+      meals: (context) => const MealsScreen(),
       expenses: (context) => const ExpensesScreen(),
       commitments: (context) => const CommitmentsScreen(),
       bankAccounts: (context) => const BankAccountsScreen(),
@@ -53,11 +51,7 @@ class AppRoutes {
             color: Colors.indigo,
           ),
       phoneCards: (context) => const PhoneCardsScreen(),
-      vehicles: (context) => const PlaceholderScreen(
-            title: 'إدارة السيارات',
-            icon: Icons.directions_car,
-            color: Colors.deepOrange,
-          ),
+      vehicles: (context) => const CarDashboardScreen(),
       equipment: (context) => const PlaceholderScreen(
             title: 'إدارة المعدات والأدوات',
             icon: Icons.build,

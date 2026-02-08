@@ -5,6 +5,7 @@ import '../data/bank_account_model.dart';
 import '../providers/bank_accounts_providers.dart';
 import '../../../core/navigation/app_drawer.dart';
 import '../../../core/utils/arabic_numbers.dart';
+import '../../../core/providers/common_providers.dart';
 
 class BankAccountsScreen extends ConsumerStatefulWidget {
   const BankAccountsScreen({super.key});

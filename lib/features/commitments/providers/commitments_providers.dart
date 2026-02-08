@@ -1,12 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/commitment_model.dart';
 import '../data/commitments_repository.dart';
+import '../../../core/providers/common_providers.dart';
 
 final commitmentsRepositoryProvider = Provider<CommitmentsRepository>((ref) {
   return CommitmentsRepository();
 });
-
-final currentUserIdProvider = Provider<int>((ref) => 1);
 
 // All commitments provider
 final commitmentsProvider = FutureProvider.autoDispose<List<CommitmentModel>>((ref) async {

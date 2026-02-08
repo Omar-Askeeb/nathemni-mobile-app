@@ -14,10 +14,10 @@ class ArabicNumbers {
     }
 
     // Keep English numerals as is (0-9)
-    // If you want Arabic-Indic numerals (٠-٩), uncomment below:
-    // for (int i = 0; i < english.length; i++) {
-    //   result = result.replaceAll(english[i], arabic[i]);
-    // }
+    // Convert Arabic-Indic numerals (٠-٩) to English (0-9)
+    for (int i = 0; i < arabic.length; i++) {
+      result = result.replaceAll(arabic[i], english[i]);
+    }
 
     return result;
   }

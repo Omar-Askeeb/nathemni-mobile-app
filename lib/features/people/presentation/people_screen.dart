@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../data/person_model.dart';
 import '../providers/people_providers.dart';
 import '../../../core/navigation/app_drawer.dart';
+import '../../../core/providers/common_providers.dart';
 
 class PeopleScreen extends ConsumerWidget {
   const PeopleScreen({super.key});

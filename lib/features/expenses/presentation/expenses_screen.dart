@@ -9,6 +9,7 @@ import '../data/expense_local_model.dart';
 import '../providers/expenses_providers.dart';
 import '../../../core/navigation/app_drawer.dart';
 import '../../../core/utils/arabic_numbers.dart';
+import '../../../core/providers/common_providers.dart';
 
 class ExpensesScreen extends ConsumerStatefulWidget {
   const ExpensesScreen({super.key});

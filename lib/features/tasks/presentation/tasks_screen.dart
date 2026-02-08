@@ -18,7 +18,7 @@ class TasksScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tasksAsync = ref.watch(tasksProvider);
-    final isOnline = ref.watch(isOnlineProvider);
+    final isDeviceOnline = ref.watch(isDeviceOnlineProvider);
     final currentFilter = ref.watch(taskFilterProvider);
 
     return Scaffold(

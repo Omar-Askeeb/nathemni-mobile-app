@@ -1,12 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/person_model.dart';
+import '../../../core/providers/common_providers.dart';
 import '../data/people_repository.dart';
 
 final peopleRepositoryProvider = Provider<PeopleRepository>((ref) {
   return PeopleRepository();
 });
-
-final currentUserIdProvider = Provider<int>((ref) => 1);
 
 final peopleProvider = FutureProvider.autoDispose<List<PersonModel>>((ref) async {
   final repository = ref.watch(peopleRepositoryProvider);

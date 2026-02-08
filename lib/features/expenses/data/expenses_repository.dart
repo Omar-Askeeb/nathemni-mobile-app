@@ -86,4 +86,16 @@ class ExpensesRepository {
     );
     return (result.first['total'] as num?)?.toDouble() ?? 0.0;
   }
+
+  Future<ExpenseLocalModel?> getExpenseByLinkedItem(String linkedTo, int linkedId) async {
+    final db = await _dbHelper.database;
+    final maps = await db.query(
+      'expenses',
+      where: 'linked_to = ? AND linked_id = ? AND deleted_at IS NULL',
+      whereArgs: [linkedTo, linkedId],
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return ExpenseLocalModel.fromMap(maps.first);
+  }
 }

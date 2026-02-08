@@ -1,14 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/sim_card_model.dart';
 import '../data/sim_cards_repository.dart';
+import '../../../core/providers/common_providers.dart';
 
 // Repository provider
 final simCardsRepositoryProvider = Provider<SimCardsRepository>((ref) {
   return SimCardsRepository();
 });
-
-// Current user ID provider (hardcoded to 1 for now - will be replaced with auth)
-final currentUserIdProvider = Provider<int>((ref) => 1);
 
 // SIM cards provider - gets all SIM cards for current user
 final simCardsProvider =

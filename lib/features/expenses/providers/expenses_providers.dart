@@ -1,12 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/expense_local_model.dart';
 import '../data/expenses_repository.dart';
+import '../../../core/providers/common_providers.dart';
 
 final expensesRepositoryProvider = Provider<ExpensesRepository>((ref) {
   return ExpensesRepository();
 });
-
-final currentUserIdProvider = Provider<int>((ref) => 1);
 
 // Filter states
 final selectedCategoryFilterProvider = StateProvider<String?>((ref) => null);
@@ -73,10 +72,17 @@ final expensesByCategoryProvider =
 class ExpensesNotifier extends StateNotifier<AsyncValue<List<ExpenseLocalModel>>> {
   final ExpensesRepository _repository;
   final int _userId;
+  final Ref _ref;
 
-  ExpensesNotifier(this._repository, this._userId)
+  ExpensesNotifier(this._repository, this._userId, this._ref)
       : super(const AsyncValue.loading()) {
-    _loadExpenses();
+    Future.microtask(() => _loadExpenses());
+  }
+
+  void _invalidateProviders() {
+    _ref.invalidate(expensesProvider);
+    _ref.invalidate(totalExpensesProvider);
+    _ref.invalidate(expensesByCategoryProvider);
   }
 
   Future<void> _loadExpenses() async {
@@ -92,7 +98,29 @@ class ExpensesNotifier extends StateNotifier<AsyncValue<List<ExpenseLocalModel>>
   Future<void> addExpense(ExpenseLocalModel expense) async {
     try {
       await _repository.addExpense(expense);
+      _invalidateProviders();
       await _loadExpenses();
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<void> addOrUpdateLinkedExpense(ExpenseLocalModel expense) async {
+    if (expense.linkedTo == null || expense.linkedId == null) {
+      return addExpense(expense);
+    }
+
+    try {
+      final existing = await _repository.getExpenseByLinkedItem(
+        expense.linkedTo!,
+        expense.linkedId!,
+      );
+
+      if (existing != null) {
+        await updateExpense(expense.copyWith(id: existing.id));
+      } else {
+        await addExpense(expense);
+      }
     } catch (e) {
       rethrow;
     }
@@ -101,6 +129,7 @@ class ExpensesNotifier extends StateNotifier<AsyncValue<List<ExpenseLocalModel>>
   Future<void> updateExpense(ExpenseLocalModel expense) async {
     try {
       await _repository.updateExpense(expense);
+      _invalidateProviders();
       await _loadExpenses();
     } catch (e) {
       rethrow;
@@ -110,6 +139,7 @@ class ExpensesNotifier extends StateNotifier<AsyncValue<List<ExpenseLocalModel>>
   Future<void> deleteExpense(int id) async {
     try {
       await _repository.deleteExpense(id);
+      _invalidateProviders();
       await _loadExpenses();
     } catch (e) {
       rethrow;
@@ -125,5 +155,5 @@ final expensesNotifierProvider = StateNotifierProvider<ExpensesNotifier,
     AsyncValue<List<ExpenseLocalModel>>>((ref) {
   final repository = ref.watch(expensesRepositoryProvider);
   final userId = ref.watch(currentUserIdProvider);
-  return ExpensesNotifier(repository, userId);
+  return ExpensesNotifier(repository, userId, ref);
 });

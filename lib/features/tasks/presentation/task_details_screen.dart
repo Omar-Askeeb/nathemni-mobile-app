@@ -227,8 +227,18 @@ class _TaskDetailsScreenState extends ConsumerState<TaskDetailsScreen> {
   Future<void> _completeShoppingTask() async {
     final totalPrice = ChecklistHelper.getTotalPrice(_checklistItems);
     
-    // Show payment method dialog
-    final paymentMethod = await _showPaymentMethodDialog(totalPrice);
+    // Check if there's already an existing expense for this task
+    String? paymentMethod;
+    final existingExpense = await ref.read(expensesRepositoryProvider).getExpenseByLinkedItem('task', widget.task.id!);
+    
+    if (existingExpense != null) {
+      // If updating, reuse the previous payment method
+      paymentMethod = existingExpense.paymentMethod;
+    } else {
+      // If it's the first time completing, show payment method dialog
+      paymentMethod = await _showPaymentMethodDialog(totalPrice);
+    }
+    
     if (paymentMethod == null) return;
 
     // Save to expenses table
@@ -238,14 +248,14 @@ class _TaskDetailsScreenState extends ConsumerState<TaskDetailsScreen> {
       amount: totalPrice,
       currency: 'LYD',
       paymentMethod: paymentMethod,
-      expenseDate: DateTime.now(),
+      expenseDate: existingExpense?.expenseDate ?? DateTime.now(),
       notes: widget.task.title,
       linkedTo: 'task',
       linkedId: widget.task.id,
     );
 
     try {
-      await ref.read(expensesNotifierProvider.notifier).addExpense(expense);
+      await ref.read(expensesNotifierProvider.notifier).addOrUpdateLinkedExpense(expense);
 
       // Update task as completed
       final checklistJson = ChecklistHelper.encodeChecklist(_checklistItems);

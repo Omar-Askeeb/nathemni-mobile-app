@@ -7,6 +7,7 @@ import '../../people/data/person_model.dart';
 import '../../people/providers/people_providers.dart' hide currentUserIdProvider;
 import '../../../core/navigation/app_drawer.dart';
 import '../../../core/utils/arabic_numbers.dart';
+import '../../../core/providers/common_providers.dart';
 import 'commitment_details_screen.dart';
 
 class CommitmentsScreen extends ConsumerStatefulWidget {

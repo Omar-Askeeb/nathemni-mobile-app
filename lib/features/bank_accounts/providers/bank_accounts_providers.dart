@@ -1,12 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/bank_account_model.dart';
 import '../data/bank_accounts_repository.dart';
+import '../../../core/providers/common_providers.dart';
 
 final bankAccountsRepositoryProvider = Provider<BankAccountsRepository>((ref) {
   return BankAccountsRepository();
 });
-
-final currentUserIdProvider = Provider<int>((ref) => 1);
 
 final bankAccountsProvider =
     FutureProvider.autoDispose<List<BankAccountModel>>((ref) async {
