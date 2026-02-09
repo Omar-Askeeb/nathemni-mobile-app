@@ -5,6 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'core/theme/app_theme.dart';
 import 'core/navigation/app_routes.dart';
 import 'core/services/notification_service.dart';
+import 'data/local/database_helper.dart';
 
 void main() async {
   try {
@@ -23,12 +24,11 @@ void main() async {
     
     // Initialize database early to catch errors
     try {
-      // Check database
-      // Using direct print for debugging as Flutter logs might get lost if it crashes early
-      debugPrint('Initializing Database...');
-      // We can't import DatabaseHelper here easily without import
+      debugPrint('Pre-initializing Database...');
+      await DatabaseHelper.instance.database;
+      debugPrint('Database initialization successful');
     } catch (e) {
-      debugPrint('Database Error: $e');
+      debugPrint('Database Initialization ERROR: $e');
     }
 
     runApp(
@@ -87,7 +87,7 @@ class HomePage extends StatelessWidget {
           children: [
             // Logo
             Image.asset(
-              'assets/images/logo.png',
+              'assets/images/paddin_logo.png',
               width: 200,
               height: 200,
             ),

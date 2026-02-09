@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
@@ -6,28 +7,45 @@ import 'package:sqflite/sqflite.dart';
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
+  static Future<Database>? _databaseFuture;
 
   DatabaseHelper._init();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB('nathemni.db');
+    
+    // Use a future variable to ensure initialization only happens once
+    // even if multiple calls arrive simultaneously
+    _databaseFuture ??= _initDB('nathemni.db');
+    _database = await _databaseFuture;
     return _database!;
   }
 
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
+    debugPrint('Opening database at: $path');
 
     final db = await openDatabase(
       path,
-      version: 9, // Incremented for car management tables
-      onCreate: _createDB,
-      onUpgrade: _upgradeDB,
+      version: 13,
+      onConfigure: (db) async {
+        debugPrint('Configuring database (enabling foreign keys)...');
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
+      onCreate: (db, version) async {
+        debugPrint('Creating database version $version...');
+        await _createDB(db, version);
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        debugPrint('Upgrading database from $oldVersion to $newVersion...');
+        await _upgradeDB(db, oldVersion, newVersion);
+      },
     );
 
-    // Verify and fix schema after opening
+    debugPrint('Database opened. Verifying schema...');
     await _verifyAndFixSchema(db);
+    debugPrint('Database schema verification complete.');
 
     return db;
   }
@@ -44,12 +62,146 @@ class DatabaseHelper {
     } catch (e) {
       // Silently ignore if table doesn't exist yet
     }
+
+    // Ensure a default user exists for the hardcoded ID 1
+    try {
+      final List<Map<String, dynamic>> users = await db.query(
+        'users',
+        where: 'id = ?',
+        whereArgs: [1],
+      );
+      if (users.isEmpty) {
+        await db.insert('users', {
+          'id': 1,
+          'name': 'User',
+          'created_at': DateTime.now().toIso8601String(),
+        });
+        debugPrint('Inserted default user with ID 1.');
+      }
+    } catch (e) {
+      debugPrint('Default user check warning: $e');
+    }
+
+    // Verify and fix tools tables schema
+    await _verifyToolsSchema(db);
+  }
+
+  Future<void> _verifyToolsSchema(Database db) async {
+    try {
+      // Check tool_categories columns
+      final catInfo = await db.rawQuery('PRAGMA table_info(tool_categories)');
+      if (catInfo.isNotEmpty) {
+        final hasSortOrder = catInfo.any((col) => col['name'] == 'sort_order');
+        if (!hasSortOrder) {
+          await db.execute('ALTER TABLE tool_categories ADD COLUMN sort_order INTEGER DEFAULT 0');
+          debugPrint('Added sort_order column to tool_categories');
+        }
+      }
+
+      // Check tools table columns
+      final toolsInfo = await db.rawQuery('PRAGMA table_info(tools)');
+      if (toolsInfo.isNotEmpty) {
+        final hasNotes = toolsInfo.any((col) => col['name'] == 'notes');
+        if (!hasNotes) {
+          await db.execute('ALTER TABLE tools ADD COLUMN notes TEXT');
+          debugPrint('Added notes column to tools table');
+        }
+        
+        final hasCost = toolsInfo.any((col) => col['name'] == 'cost');
+        if (!hasCost) {
+          await db.execute('ALTER TABLE tools ADD COLUMN cost REAL DEFAULT 0');
+          debugPrint('Added cost column to tools table');
+        }
+
+        final hasDailyPrice = toolsInfo.any((col) => col['name'] == 'daily_price');
+        if (!hasDailyPrice) {
+          await db.execute('ALTER TABLE tools ADD COLUMN daily_price REAL DEFAULT 0');
+          debugPrint('Added daily_price column to tools table');
+        }
+      }
+
+      // Check tool_extensions columns
+      final extInfo = await db.rawQuery('PRAGMA table_info(tool_extensions)');
+      if (extInfo.isNotEmpty) {
+        final hasCost = extInfo.any((col) => col['name'] == 'cost');
+        if (!hasCost) {
+          await db.execute('ALTER TABLE tool_extensions ADD COLUMN cost REAL DEFAULT 0');
+          debugPrint('Added cost column to tool_extensions');
+        }
+        // Always ensure cost has values (migration fix)
+        await db.execute('UPDATE tool_extensions SET cost = COALESCE(daily_price, 0) WHERE cost IS NULL');
+      }
+
+      // Check tool_transactions columns
+      final transInfo = await db.rawQuery('PRAGMA table_info(tool_transactions)');
+      if (transInfo.isNotEmpty) {
+        final hasIsPaid = transInfo.any((col) => col['name'] == 'is_paid');
+        if (!hasIsPaid) {
+          try {
+            await db.execute('ALTER TABLE tool_transactions ADD COLUMN is_paid INTEGER DEFAULT 0');
+            debugPrint('Added is_paid column to tool_transactions');
+          } catch (_) {}
+        }
+
+        final hasStartDate = transInfo.any((col) => col['name'] == 'start_date');
+        if (!hasStartDate) {
+          // Table exists but missing critical columns - recreate it
+          debugPrint('tool_transactions missing columns, recreating...');
+          await db.execute('DROP TABLE IF EXISTS transaction_extensions');
+          await db.execute('DROP TABLE IF EXISTS tool_transactions');
+          
+          // Recreate tables
+          await db.execute('''
+            CREATE TABLE tool_transactions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              user_id INTEGER NOT NULL,
+              tool_id INTEGER NOT NULL,
+              person_id INTEGER NOT NULL,
+              transaction_type TEXT NOT NULL,
+              start_date TEXT NOT NULL,
+              due_date TEXT NOT NULL,
+              return_date TEXT,
+              daily_price REAL DEFAULT 0,
+              extensions_price REAL DEFAULT 0,
+              total_days INTEGER DEFAULT 0,
+              subtotal REAL DEFAULT 0,
+              late_fee REAL DEFAULT 0,
+              total_amount REAL DEFAULT 0,
+              status TEXT DEFAULT 'active',
+              notes TEXT,
+              created_at TEXT,
+              updated_at TEXT,
+              sync_status TEXT DEFAULT 'pending',
+              is_paid INTEGER DEFAULT 0,
+              FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+              FOREIGN KEY (tool_id) REFERENCES tools(id) ON DELETE RESTRICT,
+              FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE RESTRICT
+            )
+          ''');
+          
+          await db.execute('''
+            CREATE TABLE transaction_extensions (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              transaction_id INTEGER NOT NULL,
+              extension_id INTEGER NOT NULL,
+              daily_price REAL DEFAULT 0,
+              FOREIGN KEY (transaction_id) REFERENCES tool_transactions(id) ON DELETE CASCADE,
+              FOREIGN KEY (extension_id) REFERENCES tool_extensions(id) ON DELETE RESTRICT
+            )
+          ''');
+          
+          await db.execute('CREATE INDEX IF NOT EXISTS idx_tool_transactions_user ON tool_transactions(user_id)');
+          await db.execute('CREATE INDEX IF NOT EXISTS idx_tool_transactions_tool ON tool_transactions(tool_id)');
+          await db.execute('CREATE INDEX IF NOT EXISTS idx_tool_transactions_person ON tool_transactions(person_id)');
+          await db.execute('CREATE INDEX IF NOT EXISTS idx_tool_transactions_status ON tool_transactions(status)');
+        }
+      }
+    } catch (e) {
+      debugPrint('Tools schema verification warning: $e');
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
-    // Enable foreign keys
-    await db.execute('PRAGMA foreign_keys = ON');
-
     // Create all tables
     await _createUsersTable(db);
     await _createCategoriesTable(db);
@@ -58,10 +210,6 @@ class DatabaseHelper {
     await _createPeopleTable(db);
     await _createCommitmentsTable(db);
     await _createDebtPaymentsTable(db);
-    await _createEquipmentCategoriesTable(db);
-    await _createEquipmentTable(db);
-    await _createEquipmentLendingsTable(db);
-    await _createEquipmentCleaningTasksTable(db);
     await _createPaymentMethodsTable(db);
     await _createSimCardsTable(db);
     await _createBankAccountsTable(db);
@@ -69,6 +217,9 @@ class DatabaseHelper {
     await _createMealsTable(db);
     await _createMealLogsTable(db);
     await _createCarManagementTables(db);
+    await _createToolsTables(db);
+    await _createIncomeTable(db);
+    await _createNotificationsTable(db);
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -108,7 +259,6 @@ class DatabaseHelper {
     }
     if (oldVersion < 7) {
       // Add debt_payments table for version 7
-      // Add debt_payments table for version 7
       await _createDebtPaymentsTable(db);
     }
     if (oldVersion < 8) {
@@ -119,6 +269,35 @@ class DatabaseHelper {
     if (oldVersion < 9) {
       // Add car management tables for version 9
       await _createCarManagementTables(db);
+    }
+    if (oldVersion < 10) {
+      // Add income and notifications tables for version 10
+      await _createIncomeTable(db);
+      await _createNotificationsTable(db);
+    }
+    if (oldVersion < 11) {
+      // Add tools management tables for version 11
+      await _createToolsTables(db);
+    }
+    if (oldVersion < 12) {
+      // Add cost and daily_price columns to tools table for version 12
+      try {
+        await db.execute('ALTER TABLE tools ADD COLUMN cost REAL DEFAULT 0');
+        await db.execute('ALTER TABLE tools ADD COLUMN daily_price REAL DEFAULT 0');
+        await db.execute('ALTER TABLE tools ADD COLUMN notes TEXT');
+      } catch (_) {}
+      
+      // Add is_paid column to tool_transactions table
+      try {
+        await db.execute('ALTER TABLE tool_transactions ADD COLUMN is_paid INTEGER DEFAULT 0');
+      } catch (_) {}
+    }
+    if (oldVersion < 13) {
+      // Rename daily_price to cost in tool_extensions table for version 13
+      try {
+        await db.execute('ALTER TABLE tool_extensions ADD COLUMN cost REAL DEFAULT 0');
+        await db.execute('UPDATE tool_extensions SET cost = COALESCE(daily_price, 0) WHERE cost IS NULL');
+      } catch (_) {}
     }
   }
 
@@ -347,154 +526,6 @@ class DatabaseHelper {
     // Create index
     await db.execute(
         'CREATE INDEX idx_debt_payments_commitment ON debt_payments(commitment_id)');
-  }
-
-  Future<void> _createEquipmentCategoriesTable(Database db) async {
-    await db.execute('''
-      CREATE TABLE equipment_categories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        server_id INTEGER,
-        name_ar TEXT NOT NULL,
-        name_en TEXT NOT NULL,
-        icon TEXT,
-        color TEXT,
-        display_order INTEGER DEFAULT 0,
-        is_active INTEGER DEFAULT 1,
-        is_system INTEGER DEFAULT 1,
-        created_at TEXT,
-        updated_at TEXT,
-        sync_status TEXT DEFAULT 'synced',
-        UNIQUE(server_id)
-      )
-    ''');
-  }
-
-  Future<void> _createEquipmentTable(Database db) async {
-    await db.execute('''
-      CREATE TABLE equipment (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        server_id INTEGER,
-        user_id INTEGER NOT NULL,
-        equipment_category_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        description TEXT,
-        serial_number TEXT,
-        status TEXT DEFAULT 'available',
-        rental_price_per_day REAL,
-        currency TEXT DEFAULT 'LYD',
-        needs_cleaning INTEGER DEFAULT 0,
-        last_cleaned_at TEXT,
-        next_cleaning_due TEXT,
-        image_path TEXT,
-        notes TEXT,
-        is_synced INTEGER DEFAULT 0,
-        sync_id TEXT,
-        created_offline INTEGER DEFAULT 0,
-        created_at TEXT,
-        updated_at TEXT,
-        deleted_at TEXT,
-        sync_status TEXT DEFAULT 'pending',
-        last_modified TEXT,
-        UNIQUE(server_id),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (equipment_category_id) REFERENCES equipment_categories(id) ON DELETE RESTRICT
-      )
-    ''');
-
-    // Create indexes
-    await db.execute(
-        'CREATE INDEX idx_equipment_user_status ON equipment(user_id, status)');
-    await db.execute(
-        'CREATE INDEX idx_equipment_category ON equipment(equipment_category_id)');
-  }
-
-  Future<void> _createEquipmentLendingsTable(Database db) async {
-    await db.execute('''
-      CREATE TABLE equipment_lendings (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        server_id INTEGER,
-        equipment_id INTEGER NOT NULL,
-        lender_id INTEGER NOT NULL,
-        borrower_user_id INTEGER,
-        borrower_name TEXT,
-        borrower_phone TEXT,
-        borrower_email TEXT,
-        borrower_confirmed INTEGER DEFAULT 0,
-        confirmation_sent_at TEXT,
-        borrow_date TEXT NOT NULL,
-        expected_return_date TEXT NOT NULL,
-        actual_return_date TEXT,
-        rental_price_per_day REAL,
-        total_rental_cost REAL,
-        currency TEXT DEFAULT 'LYD',
-        payment_status TEXT DEFAULT 'pending',
-        payment_method_id INTEGER,
-        status TEXT DEFAULT 'pending',
-        is_damaged INTEGER DEFAULT 0,
-        damage_report TEXT,
-        damage_photo_path TEXT,
-        repair_cost REAL,
-        notes TEXT,
-        is_synced INTEGER DEFAULT 0,
-        sync_id TEXT,
-        created_offline INTEGER DEFAULT 0,
-        created_at TEXT,
-        updated_at TEXT,
-        deleted_at TEXT,
-        sync_status TEXT DEFAULT 'pending',
-        last_modified TEXT,
-        UNIQUE(server_id),
-        FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE CASCADE,
-        FOREIGN KEY (lender_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (borrower_user_id) REFERENCES users(id) ON DELETE SET NULL,
-        FOREIGN KEY (payment_method_id) REFERENCES payment_methods(id) ON DELETE SET NULL
-      )
-    ''');
-
-    // Create indexes
-    await db.execute(
-        'CREATE INDEX idx_lendings_lender ON equipment_lendings(lender_id, status)');
-    await db.execute(
-        'CREATE INDEX idx_lendings_borrower ON equipment_lendings(borrower_user_id, status)');
-    await db.execute(
-        'CREATE INDEX idx_lendings_equipment ON equipment_lendings(equipment_id, status)');
-  }
-
-  Future<void> _createEquipmentCleaningTasksTable(Database db) async {
-    await db.execute('''
-      CREATE TABLE equipment_cleaning_tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        server_id INTEGER,
-        equipment_id INTEGER NOT NULL,
-        user_id INTEGER NOT NULL,
-        task_id INTEGER,
-        scheduled_date TEXT NOT NULL,
-        completed_at TEXT,
-        completed_by INTEGER,
-        is_completed INTEGER DEFAULT 0,
-        notes TEXT,
-        is_recurring INTEGER DEFAULT 0,
-        recurrence_pattern TEXT,
-        is_synced INTEGER DEFAULT 0,
-        sync_id TEXT,
-        created_offline INTEGER DEFAULT 0,
-        created_at TEXT,
-        updated_at TEXT,
-        sync_status TEXT DEFAULT 'pending',
-        last_modified TEXT,
-        UNIQUE(server_id),
-        FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE CASCADE,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL,
-        FOREIGN KEY (completed_by) REFERENCES users(id) ON DELETE SET NULL
-      )
-    ''');
-
-    // Create indexes
-    await db.execute(
-        'CREATE INDEX idx_cleaning_equipment ON equipment_cleaning_tasks(equipment_id, is_completed)');
-    await db.execute(
-        'CREATE INDEX idx_cleaning_scheduled ON equipment_cleaning_tasks(user_id, scheduled_date)');
   }
 
   Future<void> _createPaymentMethodsTable(Database db) async {
@@ -756,6 +787,149 @@ class DatabaseHelper {
         'CREATE INDEX idx_car_documents_expiry ON car_documents(user_id, expiry_date)');
   }
 
+  Future<void> _createToolsTables(Database db) async {
+    // Tool categories table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS tool_categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name_ar TEXT NOT NULL,
+        name_en TEXT NOT NULL,
+        icon TEXT,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    ''');
+
+    // Tools table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS tools (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        category_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        cost REAL DEFAULT 0,
+        daily_price REAL DEFAULT 0,
+        status TEXT DEFAULT 'available',
+        image_path TEXT,
+        notes TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        sync_status TEXT DEFAULT 'pending',
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES tool_categories(id) ON DELETE RESTRICT
+      )
+    ''');
+    
+    // Tool extensions/attachments table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS tool_extensions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tool_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        cost REAL DEFAULT 0,
+        status TEXT DEFAULT 'available',
+        notes TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        FOREIGN KEY (tool_id) REFERENCES tools(id) ON DELETE CASCADE
+      )
+    ''');
+
+    // Tool transactions table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS tool_transactions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        tool_id INTEGER NOT NULL,
+        person_id INTEGER NOT NULL,
+        transaction_type TEXT NOT NULL,
+        start_date TEXT NOT NULL,
+        due_date TEXT NOT NULL,
+        return_date TEXT,
+        daily_price REAL DEFAULT 0,
+        extensions_price REAL DEFAULT 0,
+        total_days INTEGER DEFAULT 0,
+        subtotal REAL DEFAULT 0,
+        late_fee REAL DEFAULT 0,
+        total_amount REAL DEFAULT 0,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        created_at TEXT,
+        updated_at TEXT,
+        sync_status TEXT DEFAULT 'pending',
+        is_paid INTEGER DEFAULT 0,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (tool_id) REFERENCES tools(id) ON DELETE RESTRICT,
+        FOREIGN KEY (person_id) REFERENCES people(id) ON DELETE RESTRICT
+      )
+    ''');
+
+    // Transaction extensions junction table
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS transaction_extensions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        transaction_id INTEGER NOT NULL,
+        extension_id INTEGER NOT NULL,
+        FOREIGN KEY (transaction_id) REFERENCES tool_transactions(id) ON DELETE CASCADE,
+        FOREIGN KEY (extension_id) REFERENCES tool_extensions(id) ON DELETE RESTRICT
+      )
+    ''');
+
+    // Create indexes
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tools_user ON tools(user_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tools_category ON tools(category_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tools_status ON tools(status)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tool_extensions_tool ON tool_extensions(tool_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tool_transactions_user ON tool_transactions(user_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tool_transactions_tool ON tool_transactions(tool_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tool_transactions_person ON tool_transactions(person_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_tool_transactions_status ON tool_transactions(status)');
+  }
+
+  Future<void> _createIncomeTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS income (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        amount REAL NOT NULL,
+        source_type TEXT NOT NULL, -- tool_rental, salary, business, etc.
+        source_id INTEGER,
+        entry_date TEXT NOT NULL,
+        description TEXT,
+        created_at TEXT,
+        sync_status TEXT DEFAULT 'pending',
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_income_user ON income(user_id, entry_date)');
+  }
+
+  Future<void> _createNotificationsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS notifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        type TEXT NOT NULL, -- tool_due, doc_expiry, etc.
+        related_type TEXT, -- tools, car_documents, etc.
+        related_id INTEGER,
+        scheduled_at TEXT,
+        sent_at TEXT,
+        read_at TEXT,
+        created_at TEXT,
+        sync_status TEXT DEFAULT 'pending',
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read_at)');
+  }
+
   // ========================================
   // DATABASE OPERATIONS
   // ========================================
@@ -768,10 +942,7 @@ class DatabaseHelper {
     await db.delete('cars');
     await db.delete('meal_logs');
     await db.delete('meals');
-    await db.delete('equipment_cleaning_tasks');
-    await db.delete('equipment_lendings');
-    await db.delete('equipment');
-    await db.delete('equipment_categories');
+    await db.delete('debt_payments');
     await db.delete('commitments');
     await db.delete('people');
     await db.delete('expenses');
@@ -780,6 +951,13 @@ class DatabaseHelper {
     await db.delete('bank_accounts');
     await db.delete('categories');
     await db.delete('payment_methods');
+    await db.delete('notifications');
+    await db.delete('income');
+    await db.delete('transaction_extensions');
+    await db.delete('tool_transactions');
+    await db.delete('tool_extensions');
+    await db.delete('tools');
+    await db.delete('tool_categories');
     await db.delete('users');
   }
 

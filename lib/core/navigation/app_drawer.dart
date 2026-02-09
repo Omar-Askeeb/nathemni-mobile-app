@@ -29,7 +29,7 @@ class AppDrawer extends StatelessWidget {
                   radius: 35,
                   backgroundColor: Colors.white,
                   child: Image.asset(
-                    'assets/images/logo.png',
+                    'assets/images/paddin_logo.png',
                     width: 50,
                     height: 50,
                   ),

@@ -11,6 +11,7 @@ import '../../features/people/presentation/people_screen.dart';
 import '../../features/commitments/presentation/commitments_screen.dart';
 import '../../features/meals/presentation/meals_screen.dart';
 import '../../features/car_management/presentation/car_dashboard_screen.dart';
+import '../../features/tools/presentation/tools_screen.dart';
 import '../widgets/placeholder_screen.dart';
 
 class AppRoutes {
@@ -52,11 +53,7 @@ class AppRoutes {
           ),
       phoneCards: (context) => const PhoneCardsScreen(),
       vehicles: (context) => const CarDashboardScreen(),
-      equipment: (context) => const PlaceholderScreen(
-            title: 'إدارة المعدات والأدوات',
-            icon: Icons.build,
-            color: Colors.purple,
-          ),
+      equipment: (context) => const ToolsScreen(),
       people: (context) => const PeopleScreen(),
       profile: (context) => const PlaceholderScreen(
             title: 'البيانات الشخصية',
