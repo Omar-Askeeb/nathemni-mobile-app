@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'app_routes.dart';
 
 class AppDrawer extends StatelessWidget {
   const AppDrawer({super.key});
@@ -57,7 +58,7 @@ class AppDrawer extends StatelessWidget {
             context,
             icon: Icons.home,
             title: 'الرئيسية',
-            route: '/',
+            route: AppRoutes.home,
           ),
 
           const Divider(),

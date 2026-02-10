@@ -13,10 +13,19 @@ import '../../features/meals/presentation/meals_screen.dart';
 import '../../features/car_management/presentation/car_dashboard_screen.dart';
 import '../../features/tools/presentation/tools_screen.dart';
 import '../../features/income/presentation/income_screen.dart';
+import '../../features/auth/presentation/pages/register_screen.dart';
+import '../../features/auth/presentation/pages/login_screen.dart';
+import '../../features/profile/presentation/pages/profile_screen.dart';
+import '../../features/profile/presentation/pages/edit_profile_screen.dart';
+import '../../features/account/presentation/account_management_screen.dart';
+import '../widgets/auth_wrapper.dart';
 import '../widgets/placeholder_screen.dart';
 
 class AppRoutes {
-  static const String home = '/';
+  static const String wrapper = '/wrapper';  // Auth wrapper route
+  static const String home = '/home';        // Home screen route
+  static const String register = '/register';
+  static const String login = '/login';
   static const String tasks = '/tasks';
   static const String addTask = '/add-task';
   static const String meals = '/meals';
@@ -29,6 +38,7 @@ class AppRoutes {
   static const String equipment = '/equipment';
   static const String people = '/people';
   static const String profile = '/profile';
+  static const String editProfile = '/edit-profile';
   static const String barcode = '/barcode';
   static const String notifications = '/notifications';
   static const String syncMode = '/sync-mode';
@@ -39,6 +49,9 @@ class AppRoutes {
 
   static Map<String, WidgetBuilder> getRoutes() {
     return {
+      wrapper: (context) => const AuthWrapper(),
+      register: (context) => const RegisterScreen(),
+      login: (context) => const LoginScreen(),
       home: (context) => const HomeScreen(),
       tasks: (context) => const TasksScreen(),
       addTask: (context) => const AddTaskScreen(),
@@ -57,11 +70,8 @@ class AppRoutes {
       vehicles: (context) => const CarDashboardScreen(),
       equipment: (context) => const ToolsScreen(),
       people: (context) => const PeopleScreen(),
-      profile: (context) => const PlaceholderScreen(
-            title: 'البيانات الشخصية',
-            icon: Icons.person,
-            color: Colors.blueGrey,
-          ),
+      profile: (context) => const ProfileScreen(),
+      editProfile: (context) => const EditProfileScreen(),
       barcode: (context) => const BarcodeScannerScreen(),
       notifications: (context) => const PlaceholderScreen(
             title: 'الإشعارات والسجلات',
@@ -78,11 +88,7 @@ class AppRoutes {
             icon: Icons.support_agent,
             color: Colors.green,
           ),
-      account: (context) => const PlaceholderScreen(
-            title: 'إدارة حساب المستخدم',
-            icon: Icons.account_circle,
-            color: Colors.blue,
-          ),
+      account: (context) => const AccountManagementScreen(),
       about: (context) => const AboutScreen(),
       income: (context) => const IncomeScreen(),
     };

@@ -1,38 +1,88 @@
 import 'package:dio/dio.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../data/models/api_response.dart';
 import '../../../data/models/user.dart';
 import '../../../data/services/api_client.dart';
+import '../../../data/repositories/user_repository.dart';
 
 class AuthService {
   final ApiClient _apiClient;
+  final UserRepository _userRepository;
+  final FlutterSecureStorage _secureStorage;
 
-  AuthService(this._apiClient);
+  static const String _isLoggedInKey = 'is_logged_in';
+  static const String _currentUserIdKey = 'current_user_id';
+
+  AuthService(
+    this._apiClient, {
+    UserRepository? userRepository,
+    FlutterSecureStorage? secureStorage,
+  })  : _userRepository = userRepository ?? UserRepository(),
+        _secureStorage = secureStorage ?? const FlutterSecureStorage();
+
+  /// Check if user is logged in
+  Future<bool> isLoggedIn() async {
+    final isLoggedIn = await _secureStorage.read(key: _isLoggedInKey);
+    return isLoggedIn == 'true';
+  }
+
+  /// Get current user ID from secure storage
+  Future<int?> getCurrentUserId() async {
+    final userId = await _secureStorage.read(key: _currentUserIdKey);
+    return userId != null ? int.tryParse(userId) : null;
+  }
+
+  /// Set login state
+  Future<void> _setLoggedIn(bool value, {int? userId}) async {
+    await _secureStorage.write(key: _isLoggedInKey, value: value.toString());
+    if (userId != null) {
+      await _secureStorage.write(key: _currentUserIdKey, value: userId.toString());
+    } else if (!value) {
+      await _secureStorage.delete(key: _currentUserIdKey);
+    }
+  }
 
   /// Register new user
   /// POST /register
   Future<ApiResponse<Map<String, dynamic>>> register({
-    required String name,
+    required String nameAr,
+    required String nameEn,
+    required String username,
+    required String email,
+    required String phone,
     required String password,
     required String passwordConfirmation,
-    String? email,
-    String? phone,
   }) async {
     try {
       final response = await _apiClient.post(
         '/register',
         data: {
-          'name': name,
+          'name': nameAr, // Use Arabic name as primary name
+          'name_ar': nameAr,
+          'name_en': nameEn,
+          'username': username,
+          'email': email,
+          'phone': phone,
           'password': password,
           'password_confirmation': passwordConfirmation,
-          if (email != null) 'email': email,
-          if (phone != null) 'phone': phone,
         },
       );
 
-      return ApiResponse.fromJson(
+      final apiResponse = ApiResponse.fromJson(
         response.data,
         (data) => data as Map<String, dynamic>,
       );
+
+      // If registration successful, save user locally
+      if (apiResponse.success && apiResponse.data != null) {
+        final userData = apiResponse.data!['user'] as Map<String, dynamic>?;
+        if (userData != null) {
+          final user = User.fromJson(userData);
+          await _userRepository.saveUser(user);
+        }
+      }
+
+      return apiResponse;
     } on DioException catch (e) {
       if (e.response != null) {
         return ApiResponse.fromJson(
@@ -42,6 +92,33 @@ class AuthService {
       }
       rethrow;
     }
+  }
+
+  /// Register user locally (offline mode)
+  Future<User> registerLocally({
+    required String nameAr,
+    required String nameEn,
+    required String username,
+    required String email,
+    required String phone,
+    required String passwordHash,
+  }) async {
+    final user = await _userRepository.createUser(
+      name: nameAr,
+      nameAr: nameAr,
+      nameEn: nameEn,
+      username: username,
+      email: email,
+      phone: phone,
+    );
+    
+    // Store password hash for offline login
+    await _userRepository.setPasswordHash(user.id, passwordHash);
+    
+    // Auto-login after local registration
+    await _setLoggedIn(true, userId: user.id);
+    
+    return user;
   }
 
   /// Login with password
@@ -64,9 +141,17 @@ class AuthService {
         (data) => data as Map<String, dynamic>,
       );
 
-      // Save token if login successful
+      // Save token and set logged in state if login successful
       if (apiResponse.success && apiResponse.data?['token'] != null) {
         await _apiClient.setToken(apiResponse.data!['token'] as String);
+        
+        // Save user data locally and set logged in
+        final userData = apiResponse.data!['user'] as Map<String, dynamic>?;
+        if (userData != null) {
+          final user = User.fromJson(userData);
+          await _userRepository.saveUser(user);
+          await _setLoggedIn(true, userId: user.id);
+        }
       }
 
       return apiResponse;
@@ -79,6 +164,25 @@ class AuthService {
       }
       rethrow;
     }
+  }
+
+  /// Login locally (offline mode)
+  Future<User?> loginLocally({
+    required String identifier,
+    required String passwordHash,
+  }) async {
+    final user = await _userRepository.validateLogin(identifier, passwordHash);
+    if (user != null) {
+      await _setLoggedIn(true, userId: user.id);
+    }
+    return user;
+  }
+
+  /// Get current logged in user from local storage
+  Future<User?> getLocalCurrentUser() async {
+    final userId = await getCurrentUserId();
+    if (userId == null) return null;
+    return await _userRepository.getUser(userId);
   }
 
   /// Request OTP for login (passwordless)
@@ -207,7 +311,9 @@ class AuthService {
   /// Update profile
   /// PUT /profile
   Future<ApiResponse<User>> updateProfile({
-    String? name,
+    String? nameAr,
+    String? nameEn,
+    String? username,
     String? email,
     String? phone,
     String? language,
@@ -216,7 +322,10 @@ class AuthService {
       final response = await _apiClient.put(
         '/profile',
         data: {
-          if (name != null) 'name': name,
+          if (nameAr != null) 'name': nameAr,
+          if (nameAr != null) 'name_ar': nameAr,
+          if (nameEn != null) 'name_en': nameEn,
+          if (username != null) 'username': username,
           if (email != null) 'email': email,
           if (phone != null) 'phone': phone,
           if (language != null) 'language': language,
@@ -238,21 +347,103 @@ class AuthService {
     }
   }
 
+  /// Update profile locally (offline mode)
+  Future<User?> updateProfileLocally({
+    required int userId,
+    String? nameAr,
+    String? nameEn,
+    String? username,
+    String? email,
+    String? phone,
+    String? profileImage,
+  }) async {
+    final user = await _userRepository.getUser(userId);
+    if (user == null) return null;
+
+    final updatedUser = user.copyWith(
+      name: nameAr ?? user.name,
+      nameAr: nameAr ?? user.nameAr,
+      nameEn: nameEn ?? user.nameEn,
+      username: username ?? user.username,
+      email: email ?? user.email,
+      phone: phone ?? user.phone,
+      profileImage: profileImage ?? user.profileImage,
+    );
+
+    await _userRepository.updateUser(updatedUser);
+    return updatedUser;
+  }
+
+  /// Upload profile image
+  /// POST /profile/image
+  Future<ApiResponse<Map<String, dynamic>>> uploadProfileImage(String filePath) async {
+    try {
+      final response = await _apiClient.uploadFile(
+        '/profile/image',
+        filePath,
+      );
+
+      final apiResponse = ApiResponse.fromJson(
+        response.data,
+        (data) => data as Map<String, dynamic>,
+      );
+
+      // Update local user with new image URL
+      if (apiResponse.success && apiResponse.data?['image_url'] != null) {
+        final userId = await getCurrentUserId();
+        if (userId != null) {
+          await _userRepository.updateProfileImage(
+            userId,
+            apiResponse.data!['image_url'] as String,
+          );
+        }
+      }
+
+      return apiResponse;
+    } on DioException catch (e) {
+      if (e.response != null) {
+        return ApiResponse.fromJson(
+          e.response!.data,
+          (data) => data as Map<String, dynamic>,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  /// Update profile image locally (for offline use)
+  Future<void> updateProfileImageLocally(int userId, String imagePath) async {
+    await _userRepository.updateProfileImage(userId, imagePath);
+  }
+
   /// Logout
   /// POST /logout
   Future<ApiResponse<dynamic>> logout() async {
     try {
       final response = await _apiClient.post('/logout');
       await _apiClient.clearToken();
+      await _setLoggedIn(false);
 
       return ApiResponse.fromJson(response.data, null);
     } on DioException catch (e) {
       await _apiClient.clearToken();
+      await _setLoggedIn(false);
       if (e.response != null) {
         return ApiResponse.fromJson(e.response!.data, null);
       }
       rethrow;
     }
+  }
+
+  /// Logout locally (offline mode)
+  Future<void> logoutLocally() async {
+    await _apiClient.clearToken();
+    await _setLoggedIn(false);
+  }
+
+  /// Check if user has registered (has a profile)
+  Future<bool> hasRegisteredUser() async {
+    return await _userRepository.hasRegisteredUser();
   }
 
   /// Change password
@@ -279,5 +470,28 @@ class AuthService {
       }
       rethrow;
     }
+  }
+
+  /// Change password locally (offline mode)
+  Future<bool> changePasswordLocally({
+    required int userId,
+    required String oldPasswordHash,
+    required String newPasswordHash,
+  }) async {
+    return await _userRepository.changePassword(
+      userId,
+      oldPasswordHash,
+      newPasswordHash,
+    );
+  }
+
+  /// Delete user account locally
+  Future<bool> deleteAccountLocally(int userId) async {
+    final success = await _userRepository.deleteUserAccount(userId);
+    if (success) {
+      await _apiClient.clearToken();
+      await _setLoggedIn(false);
+    }
+    return success;
   }
 }

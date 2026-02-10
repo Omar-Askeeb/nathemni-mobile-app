@@ -28,7 +28,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       path,
-      version: 15,
+      version: 16,
       onConfigure: (db) async {
         debugPrint('Configuring database (enabling foreign keys)...');
         await db.execute('PRAGMA foreign_keys = ON');
@@ -376,6 +376,38 @@ class DatabaseHelper {
         debugPrint('Migration to v15 failed: $e');
       }
     }
+    if (oldVersion < 16) {
+      // Add new user fields for user management
+      try {
+        final tableInfo = await db.rawQuery('PRAGMA table_info(users)');
+        final columns = tableInfo.map((col) => col['name'] as String).toSet();
+        
+        if (!columns.contains('name_ar')) {
+          await db.execute('ALTER TABLE users ADD COLUMN name_ar TEXT');
+        }
+        if (!columns.contains('name_en')) {
+          await db.execute('ALTER TABLE users ADD COLUMN name_en TEXT');
+        }
+        if (!columns.contains('username')) {
+          await db.execute('ALTER TABLE users ADD COLUMN username TEXT');
+        }
+        if (!columns.contains('profile_image')) {
+          await db.execute('ALTER TABLE users ADD COLUMN profile_image TEXT');
+        }
+        if (!columns.contains('password_hash')) {
+          await db.execute('ALTER TABLE users ADD COLUMN password_hash TEXT');
+        }
+        if (!columns.contains('email_verified_at')) {
+          await db.execute('ALTER TABLE users ADD COLUMN email_verified_at TEXT');
+        }
+        if (!columns.contains('phone_verified_at')) {
+          await db.execute('ALTER TABLE users ADD COLUMN phone_verified_at TEXT');
+        }
+        debugPrint('Migration to v16 completed: Added user management fields');
+      } catch (e) {
+        debugPrint('Migration to v16 failed: $e');
+      }
+    }
   }
 
   // ========================================
@@ -388,14 +420,23 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         server_id INTEGER,
         name TEXT NOT NULL,
+        name_ar TEXT,
+        name_en TEXT,
+        username TEXT,
         email TEXT,
         phone TEXT,
-        avatar TEXT,
+        profile_image TEXT,
+        password_hash TEXT,
         language TEXT DEFAULT 'ar',
         is_active INTEGER DEFAULT 1,
+        email_verified_at TEXT,
+        phone_verified_at TEXT,
         created_at TEXT,
         updated_at TEXT,
-        UNIQUE(server_id)
+        UNIQUE(server_id),
+        UNIQUE(username),
+        UNIQUE(email),
+        UNIQUE(phone)
       )
     ''');
   }

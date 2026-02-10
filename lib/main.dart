@@ -64,8 +64,8 @@ class NathemniApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      // Navigation
-      initialRoute: AppRoutes.home,
+      // Navigation - Start with AuthWrapper
+      initialRoute: AppRoutes.wrapper,
       routes: AppRoutes.getRoutes(),
     );
   }

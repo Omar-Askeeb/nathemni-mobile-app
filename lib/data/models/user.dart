@@ -3,8 +3,12 @@ import 'package:equatable/equatable.dart';
 class User extends Equatable {
   final int id;
   final String name;
+  final String? nameAr;
+  final String? nameEn;
+  final String? username;
   final String? email;
   final String? phone;
+  final String? profileImage;
   final String? emailVerifiedAt;
   final String? phoneVerifiedAt;
   final bool isActive;
@@ -15,8 +19,12 @@ class User extends Equatable {
   const User({
     required this.id,
     required this.name,
+    this.nameAr,
+    this.nameEn,
+    this.username,
     this.email,
     this.phone,
+    this.profileImage,
     this.emailVerifiedAt,
     this.phoneVerifiedAt,
     this.isActive = true,
@@ -25,15 +33,31 @@ class User extends Equatable {
     this.updatedAt,
   });
 
+  /// Display name: returns nameAr if in Arabic context, nameEn otherwise, or fallback to name
+  String get displayName => nameAr ?? nameEn ?? name;
+
   factory User.fromJson(Map<String, dynamic> json) {
+    // Handle is_active as either bool or int (SQLite stores as int)
+    bool isActive = true;
+    final isActiveValue = json['is_active'];
+    if (isActiveValue is bool) {
+      isActive = isActiveValue;
+    } else if (isActiveValue is int) {
+      isActive = isActiveValue == 1;
+    }
+
     return User(
       id: json['id'] as int,
       name: json['name'] as String,
+      nameAr: json['name_ar'] as String?,
+      nameEn: json['name_en'] as String?,
+      username: json['username'] as String?,
       email: json['email'] as String?,
       phone: json['phone'] as String?,
+      profileImage: json['profile_image'] as String?,
       emailVerifiedAt: json['email_verified_at'] as String?,
       phoneVerifiedAt: json['phone_verified_at'] as String?,
-      isActive: json['is_active'] as bool? ?? true,
+      isActive: isActive,
       language: json['language'] as String?,
       createdAt: json['created_at'] as String?,
       updatedAt: json['updated_at'] as String?,
@@ -44,11 +68,15 @@ class User extends Equatable {
     return {
       'id': id,
       'name': name,
+      if (nameAr != null) 'name_ar': nameAr,
+      if (nameEn != null) 'name_en': nameEn,
+      if (username != null) 'username': username,
       if (email != null) 'email': email,
       if (phone != null) 'phone': phone,
+      if (profileImage != null) 'profile_image': profileImage,
       if (emailVerifiedAt != null) 'email_verified_at': emailVerifiedAt,
       if (phoneVerifiedAt != null) 'phone_verified_at': phoneVerifiedAt,
-      'is_active': isActive,
+      'is_active': isActive ? 1 : 0,  // Store as int for SQLite compatibility
       if (language != null) 'language': language,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -58,8 +86,12 @@ class User extends Equatable {
   User copyWith({
     int? id,
     String? name,
+    String? nameAr,
+    String? nameEn,
+    String? username,
     String? email,
     String? phone,
+    String? profileImage,
     String? emailVerifiedAt,
     String? phoneVerifiedAt,
     bool? isActive,
@@ -70,8 +102,12 @@ class User extends Equatable {
     return User(
       id: id ?? this.id,
       name: name ?? this.name,
+      nameAr: nameAr ?? this.nameAr,
+      nameEn: nameEn ?? this.nameEn,
+      username: username ?? this.username,
       email: email ?? this.email,
       phone: phone ?? this.phone,
+      profileImage: profileImage ?? this.profileImage,
       emailVerifiedAt: emailVerifiedAt ?? this.emailVerifiedAt,
       phoneVerifiedAt: phoneVerifiedAt ?? this.phoneVerifiedAt,
       isActive: isActive ?? this.isActive,
@@ -85,8 +121,12 @@ class User extends Equatable {
   List<Object?> get props => [
         id,
         name,
+        nameAr,
+        nameEn,
+        username,
         email,
         phone,
+        profileImage,
         emailVerifiedAt,
         phoneVerifiedAt,
         isActive,
