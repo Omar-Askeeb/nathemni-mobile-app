@@ -28,7 +28,7 @@ class DatabaseHelper {
 
     final db = await openDatabase(
       path,
-      version: 13,
+      version: 15,
       onConfigure: (db) async {
         debugPrint('Configuring database (enabling foreign keys)...');
         await db.execute('PRAGMA foreign_keys = ON');
@@ -299,6 +299,83 @@ class DatabaseHelper {
         await db.execute('UPDATE tool_extensions SET cost = COALESCE(daily_price, 0) WHERE cost IS NULL');
       } catch (_) {}
     }
+    if (oldVersion < 14) {
+      // Add payment_method and bank_account_id to income table
+      try {
+        await db.execute('ALTER TABLE income ADD COLUMN payment_method TEXT DEFAULT "cash"');
+        await db.execute('ALTER TABLE income ADD COLUMN bank_account_id INTEGER');
+      } catch (_) {}
+    }
+    if (oldVersion < 15) {
+      // Fix expenses table schema: category_id should be TEXT and remove foreign key constraint
+      // Also add payment_method and bank_account_id for consistency
+      try {
+        await db.transaction((txn) async {
+          // 1. Rename existing table
+          await txn.execute('ALTER TABLE expenses RENAME TO expenses_old');
+
+          // 2. Create new table with corrected schema
+          await txn.execute('''
+            CREATE TABLE expenses (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              server_id INTEGER,
+              user_id INTEGER NOT NULL,
+              category_id TEXT NOT NULL,
+              payment_method_id INTEGER,
+              payment_method TEXT DEFAULT 'cash',
+              bank_account_id INTEGER,
+              amount REAL NOT NULL,
+              currency TEXT DEFAULT 'LYD',
+              description TEXT,
+              notes TEXT,
+              expense_date TEXT NOT NULL,
+              linked_to TEXT DEFAULT 'none',
+              linked_id INTEGER,
+              is_synced INTEGER DEFAULT 0,
+              sync_id TEXT,
+              created_offline INTEGER DEFAULT 0,
+              created_at TEXT,
+              updated_at TEXT,
+              deleted_at TEXT,
+              sync_status TEXT DEFAULT 'pending',
+              last_modified TEXT,
+              UNIQUE(server_id),
+              FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+              FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id) ON DELETE SET NULL
+            )
+          ''');
+
+          // 3. Copy data from old table
+          // Note: we cast ID to string if it was numeric, but since we use slugs now, 
+          // we hope the existing data is either empty or already contains compatible values.
+          await txn.execute('''
+            INSERT INTO expenses (
+              id, server_id, user_id, category_id, payment_method, amount, 
+              currency, description, notes, expense_date, linked_to, linked_id,
+              is_synced, sync_id, created_offline, created_at, updated_at, 
+              deleted_at, sync_status, last_modified
+            )
+            SELECT 
+              id, server_id, user_id, CAST(category_id AS TEXT), payment_method, amount,
+              currency, description, notes, expense_date, linked_to, linked_id,
+              is_synced, sync_id, created_offline, created_at, updated_at, 
+              deleted_at, sync_status, last_modified
+            FROM expenses_old
+          ''');
+
+          // 4. Drop old table
+          await txn.execute('DROP TABLE expenses_old');
+          
+          // 5. Re-create indexes
+          await txn.execute('CREATE INDEX idx_expenses_user_date ON expenses(user_id, expense_date)');
+          await txn.execute('CREATE INDEX idx_expenses_user_category ON expenses(user_id, category_id)');
+          await txn.execute('CREATE INDEX idx_expenses_sync ON expenses(sync_status)');
+          await txn.execute('CREATE INDEX idx_expenses_link ON expenses(user_id, linked_to, linked_id)');
+        });
+      } catch (e) {
+        debugPrint('Migration to v15 failed: $e');
+      }
+    }
   }
 
   // ========================================
@@ -400,9 +477,10 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         server_id INTEGER,
         user_id INTEGER NOT NULL,
-        category_id INTEGER NOT NULL,
+        category_id TEXT NOT NULL,
         payment_method_id INTEGER,
         payment_method TEXT DEFAULT 'cash',
+        bank_account_id INTEGER,
         amount REAL NOT NULL,
         currency TEXT DEFAULT 'LYD',
         description TEXT,
@@ -420,8 +498,7 @@ class DatabaseHelper {
         last_modified TEXT,
         UNIQUE(server_id),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT,
-        FOREIGN KEY (payment_method_id) REFERENCES payment_methods(id) ON DELETE SET NULL
+        FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id) ON DELETE SET NULL
       )
     ''');
 
@@ -897,11 +974,14 @@ class DatabaseHelper {
         amount REAL NOT NULL,
         source_type TEXT NOT NULL, -- tool_rental, salary, business, etc.
         source_id INTEGER,
+        payment_method TEXT DEFAULT 'cash',
+        bank_account_id INTEGER,
         entry_date TEXT NOT NULL,
         description TEXT,
         created_at TEXT,
         sync_status TEXT DEFAULT 'pending',
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (bank_account_id) REFERENCES bank_accounts(id) ON DELETE SET NULL
       )
     ''');
 

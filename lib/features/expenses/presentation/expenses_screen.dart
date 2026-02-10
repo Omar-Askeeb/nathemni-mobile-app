@@ -736,6 +736,15 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
       final pdf = pw.Document();
       final dateFormat = DateFormat('yyyy/MM/dd');
 
+      // Load background image
+      pw.MemoryImage? backgroundImage;
+      try {
+        final bgData = await rootBundle.load('assets/images/report_background.png');
+        backgroundImage = pw.MemoryImage(bgData.buffer.asUint8List());
+      } catch (e) {
+        debugPrint('Could not load PDF background: $e');
+      }
+
       // Group expenses by category
       final Map<String, List<ExpenseLocalModel>> groupedByCategory = {};
       final Map<String, double> categoryTotals = {};
@@ -752,11 +761,25 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
 
       pdf.addPage(
         pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          textDirection: pw.TextDirection.rtl,
-          theme: pw.ThemeData.withFont(
-            base: ttf,
-            bold: boldTtf,
+          pageTheme: pw.PageTheme(
+            pageFormat: PdfPageFormat.a4,
+            margin: const pw.EdgeInsets.only(
+              top: 7.5 * PdfPageFormat.cm,
+              bottom: 7.5 * PdfPageFormat.cm,
+              left: 2.0 * PdfPageFormat.cm,
+              right: 2.0 * PdfPageFormat.cm,
+            ),
+            textDirection: pw.TextDirection.rtl,
+            theme: pw.ThemeData.withFont(
+              base: ttf,
+              bold: boldTtf,
+            ),
+            buildBackground: backgroundImage != null
+                ? (context) => pw.FullPage(
+                      ignoreMargins: true,
+                      child: pw.Image(backgroundImage!, fit: pw.BoxFit.cover),
+                    )
+                : null,
           ),
           build: (context) => [
             // Header
@@ -830,7 +853,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
                     pw.Text(
-                      '${category?.icon ?? "📦"} ${category?.nameArabic ?? "أخرى"}',
+                      '${category?.nameArabic ?? "أخرى"}',
                       style: pw.TextStyle(font: ttf),
                     ),
                     pw.Text(

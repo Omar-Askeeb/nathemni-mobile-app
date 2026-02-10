@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/tool_transaction_model.dart';
 import '../providers/tools_providers.dart';
+import '../../bank_accounts/providers/bank_accounts_providers.dart';
+import '../../bank_accounts/data/bank_account_model.dart';
 
 class ReturnToolDialog extends ConsumerStatefulWidget {
   final ToolTransactionModel transaction;
@@ -24,6 +26,8 @@ class _ReturnToolDialogState extends ConsumerState<ReturnToolDialog> {
   final _notesController = TextEditingController();
   bool _isLoading = false;
   bool _isPaid = false;
+  String _paymentMethod = 'cash';
+  int? _selectedBankAccountId;
 
   @override
   void initState() {
@@ -48,6 +52,8 @@ class _ReturnToolDialogState extends ConsumerState<ReturnToolDialog> {
     final lateFee = double.tryParse(_lateFeeController.text) ?? 0;
     final totalAmount = subtotal + lateFee;
     final dateFormat = DateFormat('yyyy-MM-dd');
+
+    final bankAccountsAsync = ref.watch(bankAccountsProvider);
 
     return Dialog(
       child: Container(
@@ -202,6 +208,66 @@ class _ReturnToolDialogState extends ConsumerState<ReturnToolDialog> {
                             activeColor: AppTheme.success,
                             contentPadding: EdgeInsets.zero,
                           ),
+
+                          if (_isPaid) ...[
+                            const Divider(),
+                            // Payment Method
+                            const Text('طريقة الدفع:'),
+                            const SizedBox(height: 12),
+                            SizedBox(
+                              width: double.infinity,
+                              child: SegmentedButton<String>(
+                                segments: const [
+                                  ButtonSegment(
+                                    value: 'cash',
+                                    label: Text('نقداً'),
+                                    icon: Icon(Icons.money),
+                                  ),
+                                  ButtonSegment(
+                                    value: 'bank_transfer',
+                                    label: Text('مصرفي'),
+                                    icon: Icon(Icons.account_balance),
+                                  ),
+                                ],
+                                selected: {_paymentMethod},
+                                onSelectionChanged: (set) {
+                                  setState(() => _paymentMethod = set.first);
+                                },
+                                showSelectedIcon: false,
+                              ),
+                            ),
+                            
+                            if (_paymentMethod == 'bank_transfer') ...[
+                              const SizedBox(height: 12),
+                              bankAccountsAsync.when(
+                                data: (accounts) {
+                                  if (accounts.isEmpty) {
+                                    return const Text(
+                                      'لا توجد حسابات مصرفية مسجلة',
+                                      style: TextStyle(color: AppTheme.error, fontSize: 12),
+                                    );
+                                  }
+                                  return DropdownButtonFormField<int>(
+                                    value: _selectedBankAccountId,
+                                    decoration: const InputDecoration(
+                                      labelText: 'اختر الحساب المصرفي',
+                                      isDense: true,
+                                    ),
+                                    items: accounts.map((acc) {
+                                      final bank = BankInfo.fromId(acc.bankId);
+                                      return DropdownMenuItem(
+                                        value: acc.id,
+                                        child: Text('${bank?.nameArabic ?? acc.bankId} - ${acc.accountNumber}'),
+                                      );
+                                    }).toList(),
+                                    onChanged: (val) => setState(() => _selectedBankAccountId = val),
+                                  );
+                                },
+                                loading: () => const LinearProgressIndicator(),
+                                error: (_, __) => const Text('خطأ في تحميل الحسابات'),
+                              ),
+                            ],
+                          ],
                         ],
                       ),
                     ),
@@ -303,6 +369,13 @@ class _ReturnToolDialogState extends ConsumerState<ReturnToolDialog> {
   }
 
   Future<void> _returnTool() async {
+    if (_isPaid && _paymentMethod == 'bank_transfer' && _selectedBankAccountId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يرجى اختيار الحساب المصرفي')),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     final lateFee = double.tryParse(_lateFeeController.text) ?? 0;
@@ -315,6 +388,8 @@ class _ReturnToolDialogState extends ConsumerState<ReturnToolDialog> {
             lateFee: lateFee,
             notes: notes,
             isPaid: _isPaid,
+            paymentMethod: _isPaid ? _paymentMethod : 'cash',
+            bankAccountId: _isPaid ? _selectedBankAccountId : null,
           );
 
       if (mounted) {

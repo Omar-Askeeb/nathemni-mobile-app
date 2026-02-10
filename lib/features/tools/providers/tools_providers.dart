@@ -5,6 +5,7 @@ import '../data/tool_extension_model.dart';
 import '../data/tool_transaction_model.dart';
 import '../data/tools_repository.dart';
 import '../../../core/providers/common_providers.dart';
+import '../../income/providers/income_providers.dart';
 
 // ========================================
 // REPOSITORY PROVIDER
@@ -255,11 +256,17 @@ class TransactionsNotifier extends StateNotifier<AsyncValue<void>> {
     }
   }
 
-  Future<void> returnTool(int transactionId, int toolId, {double lateFee = 0, String? notes, bool isPaid = false}) async {
+  Future<void> returnTool(int transactionId, int toolId,
+      {double lateFee = 0, String? notes, bool isPaid = false, String paymentMethod = 'cash', int? bankAccountId}) async {
     state = const AsyncValue.loading();
     try {
-      await _repository.returnTool(transactionId, lateFee: lateFee, notes: notes, isPaid: isPaid);
+      await _repository.returnTool(transactionId,
+          lateFee: lateFee, notes: notes, isPaid: isPaid, paymentMethod: paymentMethod, bankAccountId: bankAccountId);
       _invalidateAll(toolId);
+      if (isPaid) {
+        _ref.invalidate(incomeProvider);
+        _ref.invalidate(totalIncomeProvider);
+      }
       state = const AsyncValue.data(null);
     } catch (e, st) {
       state = AsyncValue.error(e, st);

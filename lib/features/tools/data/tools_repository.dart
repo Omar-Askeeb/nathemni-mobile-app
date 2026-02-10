@@ -251,7 +251,8 @@ class ToolsRepository {
     }
   }
 
-  Future<void> returnTool(int transactionId, {double lateFee = 0, String? notes, bool isPaid = false}) async {
+  Future<void> returnTool(int transactionId,
+      {double lateFee = 0, String? notes, bool isPaid = false, String paymentMethod = 'cash', int? bankAccountId}) async {
     final db = await _dbHelper.database;
 
     await db.transaction((txn) async {
@@ -320,6 +321,8 @@ class ToolsRepository {
           'amount': totalAmount,
           'source_type': 'tool_rental',
           'source_id': transactionId,
+          'payment_method': paymentMethod,
+          'bank_account_id': bankAccountId,
           'entry_date': now.toIso8601String(),
           'description': 'إيجار معدة: $toolName',
           'created_at': now.toIso8601String(),

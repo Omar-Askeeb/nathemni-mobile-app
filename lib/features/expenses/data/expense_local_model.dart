@@ -6,6 +6,7 @@ class ExpenseLocalModel {
   final double amount;
   final String currency;
   final String paymentMethod; // 'cash' or 'card'
+  final int? bankAccountId;
   final DateTime expenseDate;
   final String? notes;
   final String? linkedTo; // 'task' for shopping tasks
@@ -21,6 +22,7 @@ class ExpenseLocalModel {
     required this.amount,
     this.currency = 'LYD',
     this.paymentMethod = 'cash',
+    this.bankAccountId,
     required this.expenseDate,
     this.notes,
     this.linkedTo,
@@ -39,6 +41,7 @@ class ExpenseLocalModel {
       amount: (map['amount'] as num).toDouble(),
       currency: map['currency'] as String? ?? 'LYD',
       paymentMethod: map['payment_method'] as String? ?? 'cash',
+      bankAccountId: map['bank_account_id'] as int?,
       expenseDate: DateTime.parse(map['expense_date'] as String),
       notes: map['notes'] as String?,
       linkedTo: map['linked_to'] as String?,
@@ -57,6 +60,7 @@ class ExpenseLocalModel {
       'amount': amount,
       'currency': currency,
       'payment_method': paymentMethod,
+      'bank_account_id': bankAccountId,
       'expense_date': expenseDate.toIso8601String().split('T')[0],
       'notes': notes,
       'linked_to': linkedTo,
@@ -74,6 +78,7 @@ class ExpenseLocalModel {
     double? amount,
     String? currency,
     String? paymentMethod,
+    int? bankAccountId,
     DateTime? expenseDate,
     String? notes,
     String? linkedTo,
@@ -89,6 +94,7 @@ class ExpenseLocalModel {
       amount: amount ?? this.amount,
       currency: currency ?? this.currency,
       paymentMethod: paymentMethod ?? this.paymentMethod,
+      bankAccountId: bankAccountId ?? this.bankAccountId,
       expenseDate: expenseDate ?? this.expenseDate,
       notes: notes ?? this.notes,
       linkedTo: linkedTo ?? this.linkedTo,

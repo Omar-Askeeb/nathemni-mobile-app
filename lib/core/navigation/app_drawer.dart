@@ -29,7 +29,7 @@ class AppDrawer extends StatelessWidget {
                   radius: 35,
                   backgroundColor: Colors.white,
                   child: Image.asset(
-                    'assets/images/paddin_logo.png',
+                    'assets/images/logo.png',
                     width: 50,
                     height: 50,
                   ),
@@ -89,6 +89,12 @@ class AppDrawer extends StatelessWidget {
             icon: Icons.payments,
             title: 'تتبع المصاريف',
             route: '/expenses',
+          ),
+          _buildDrawerItem(
+            context,
+            icon: Icons.trending_up,
+            title: 'إدارة الإيرادات',
+            route: '/income',
           ),
           _buildDrawerItem(
             context,

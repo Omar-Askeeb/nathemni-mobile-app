@@ -99,6 +99,8 @@ flutter:
     - assets/images/logo.png
     - assets/images/logo_horizontal.png
     - assets/images/logo_vertical.png
+    - assets/images/report_background.png
+    - assets/images/report_background.jpg
 
   fonts:
     - family: Cairo

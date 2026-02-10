@@ -12,6 +12,7 @@ import '../../features/commitments/presentation/commitments_screen.dart';
 import '../../features/meals/presentation/meals_screen.dart';
 import '../../features/car_management/presentation/car_dashboard_screen.dart';
 import '../../features/tools/presentation/tools_screen.dart';
+import '../../features/income/presentation/income_screen.dart';
 import '../widgets/placeholder_screen.dart';
 
 class AppRoutes {
@@ -34,6 +35,7 @@ class AppRoutes {
   static const String support = '/support';
   static const String account = '/account';
   static const String about = '/about';
+  static const String income = '/income';
 
   static Map<String, WidgetBuilder> getRoutes() {
     return {
@@ -82,6 +84,7 @@ class AppRoutes {
             color: Colors.blue,
           ),
       about: (context) => const AboutScreen(),
+      income: (context) => const IncomeScreen(),
     };
   }
 }

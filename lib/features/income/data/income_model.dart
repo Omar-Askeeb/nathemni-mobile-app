@@ -5,6 +5,8 @@ class IncomeModel {
   final double amount;
   final String sourceType; // tool_rental, salary, business, other
   final int? sourceId;
+  final String paymentMethod; // cash, bank_transfer, etc.
+  final int? bankAccountId;
   final DateTime entryDate;
   final String? description;
   final DateTime createdAt;
@@ -16,6 +18,8 @@ class IncomeModel {
     required this.amount,
     required this.sourceType,
     this.sourceId,
+    this.paymentMethod = 'cash',
+    this.bankAccountId,
     required this.entryDate,
     this.description,
     DateTime? createdAt,
@@ -29,6 +33,8 @@ class IncomeModel {
       amount: (map['amount'] as num).toDouble(),
       sourceType: map['source_type'] as String,
       sourceId: map['source_id'] as int?,
+      paymentMethod: map['payment_method'] as String? ?? 'cash',
+      bankAccountId: map['bank_account_id'] as int?,
       entryDate: DateTime.parse(map['entry_date'] as String),
       description: map['description'] as String?,
       createdAt: map['created_at'] != null
@@ -45,6 +51,8 @@ class IncomeModel {
       'amount': amount,
       'source_type': sourceType,
       'source_id': sourceId,
+      'payment_method': paymentMethod,
+      'bank_account_id': bankAccountId,
       'entry_date': entryDate.toIso8601String(),
       'description': description,
       'created_at': createdAt.toIso8601String(),
@@ -58,6 +66,8 @@ class IncomeModel {
     double? amount,
     String? sourceType,
     int? sourceId,
+    String? paymentMethod,
+    int? bankAccountId,
     DateTime? entryDate,
     String? description,
     DateTime? createdAt,
@@ -69,6 +79,8 @@ class IncomeModel {
       amount: amount ?? this.amount,
       sourceType: sourceType ?? this.sourceType,
       sourceId: sourceId ?? this.sourceId,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      bankAccountId: bankAccountId ?? this.bankAccountId,
       entryDate: entryDate ?? this.entryDate,
       description: description ?? this.description,
       createdAt: createdAt ?? this.createdAt,
@@ -84,6 +96,17 @@ class IncomeModel {
         return 'راتب';
       case 'business':
         return 'عمل خاص';
+      default:
+        return 'أخرى';
+    }
+  }
+
+  String get paymentMethodArabic {
+    switch (paymentMethod) {
+      case 'cash':
+        return 'نقداً';
+      case 'bank_transfer':
+        return 'تحويل مصرفي';
       default:
         return 'أخرى';
     }
