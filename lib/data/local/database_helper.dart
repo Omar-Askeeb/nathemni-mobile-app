@@ -84,6 +84,35 @@ class DatabaseHelper {
 
     // Verify and fix tools tables schema
     await _verifyToolsSchema(db);
+
+    // Verify and fix users table schema
+    await _verifyUsersSchema(db);
+  }
+
+  Future<void> _verifyUsersSchema(Database db) async {
+    try {
+      final tableInfo = await db.rawQuery('PRAGMA table_info(users)');
+      final columns = tableInfo.map((col) => col['name'] as String).toSet();
+      
+      if (!columns.contains('name_ar')) {
+        await db.execute('ALTER TABLE users ADD COLUMN name_ar TEXT');
+        debugPrint('DatabaseHelper: Added name_ar column to users');
+      }
+      if (!columns.contains('name_en')) {
+        await db.execute('ALTER TABLE users ADD COLUMN name_en TEXT');
+        debugPrint('DatabaseHelper: Added name_en column to users');
+      }
+      if (!columns.contains('username')) {
+        await db.execute('ALTER TABLE users ADD COLUMN username TEXT');
+        debugPrint('DatabaseHelper: Added username column to users');
+      }
+      if (!columns.contains('profile_image')) {
+        await db.execute('ALTER TABLE users ADD COLUMN profile_image TEXT');
+        debugPrint('DatabaseHelper: Added profile_image column to users');
+      }
+    } catch (e) {
+      debugPrint('DatabaseHelper: Users schema verification failed: $e');
+    }
   }
 
   Future<void> _verifyToolsSchema(Database db) async {

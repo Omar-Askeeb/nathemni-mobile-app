@@ -43,6 +43,20 @@ class ApiResponse<T> extends Equatable {
     };
   }
 
+  ApiResponse<T> copyWith({
+    bool? success,
+    String? message,
+    T? data,
+    Map<String, dynamic>? errors,
+  }) {
+    return ApiResponse<T>(
+      success: success ?? this.success,
+      message: message ?? this.message,
+      data: data ?? this.data,
+      errors: errors ?? this.errors,
+    );
+  }
+
   @override
   List<Object?> get props => [success, message, data, errors];
 }

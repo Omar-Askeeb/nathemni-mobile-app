@@ -10,33 +10,33 @@ class UserRepository {
       : _dbHelper = dbHelper ?? DatabaseHelper.instance;
 
   /// Save or update a user in the local database
-  Future<int> saveUser(User user) async {
+  Future<User> saveUser(User user) async {
     final db = await _dbHelper.database;
     final now = DateTime.now().toIso8601String();
 
+    debugPrint('UserRepository: Saving user: ${user.toJson()}');
     final existingUser = await getUser(user.id);
     
     if (existingUser != null) {
-      // Update existing user
-      return await db.update(
+      // Update existing user - merge new data with existing to preserve local fields
+      final mergedUser = existingUser.merge(user).copyWith(updatedAt: now);
+      debugPrint('UserRepository: Merged user for update: ${mergedUser.toJson()}');
+      await db.update(
         'users',
-        {
-          ...user.toJson(),
-          'updated_at': now,
-        },
+        mergedUser.toJson(),
         where: 'id = ?',
         whereArgs: [user.id],
       );
+      return mergedUser;
     } else {
       // Insert new user
-      return await db.insert(
+      final newUser = user.copyWith(createdAt: now, updatedAt: now);
+      debugPrint('UserRepository: Inserting new user: ${newUser.toJson()}');
+      await db.insert(
         'users',
-        {
-          ...user.toJson(),
-          'created_at': now,
-          'updated_at': now,
-        },
+        newUser.toJson(),
       );
+      return newUser;
     }
   }
 
@@ -50,7 +50,12 @@ class UserRepository {
       limit: 1,
     );
 
-    if (results.isEmpty) return null;
+    if (results.isEmpty) {
+      debugPrint('UserRepository: User with ID $id not found in DB');
+      return null;
+    }
+    
+    debugPrint('UserRepository: Found user in DB: ${results.first}');
     return User.fromJson(results.first);
   }
 

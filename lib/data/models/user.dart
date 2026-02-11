@@ -48,17 +48,17 @@ class User extends Equatable {
 
     return User(
       id: json['id'] as int,
-      name: json['name'] as String,
+      name: json['name'] as String? ?? json['name_ar'] as String? ?? 'User',
       nameAr: json['name_ar'] as String?,
       nameEn: json['name_en'] as String?,
       username: json['username'] as String?,
       email: json['email'] as String?,
       phone: json['phone'] as String?,
-      profileImage: json['profile_image'] as String?,
+      profileImage: (json['profile_image'] as String?) ?? (json['avatar'] as String?),
       emailVerifiedAt: json['email_verified_at'] as String?,
       phoneVerifiedAt: json['phone_verified_at'] as String?,
       isActive: isActive,
-      language: json['language'] as String?,
+      language: (json['language'] as String?) ?? (json['preferred_mode'] == 'en' ? 'en' : 'ar'),
       createdAt: json['created_at'] as String?,
       updatedAt: json['updated_at'] as String?,
     );
@@ -81,6 +81,25 @@ class User extends Equatable {
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     };
+  }
+
+  User merge(User other) {
+    return User(
+      id: id,
+      name: (other.name.isNotEmpty && other.name != 'User') ? other.name : name,
+      nameAr: other.nameAr ?? nameAr,
+      nameEn: other.nameEn ?? nameEn,
+      username: other.username ?? username,
+      email: other.email ?? email,
+      phone: other.phone ?? phone,
+      profileImage: other.profileImage ?? profileImage,
+      emailVerifiedAt: other.emailVerifiedAt ?? emailVerifiedAt,
+      phoneVerifiedAt: other.phoneVerifiedAt ?? phoneVerifiedAt,
+      isActive: other.isActive,
+      language: other.language ?? language,
+      createdAt: other.createdAt ?? createdAt,
+      updatedAt: other.updatedAt ?? updatedAt,
+    );
   }
 
   User copyWith({

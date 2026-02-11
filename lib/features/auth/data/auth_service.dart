@@ -77,8 +77,18 @@ class AuthService {
       if (apiResponse.success && apiResponse.data != null) {
         final userData = apiResponse.data!['user'] as Map<String, dynamic>?;
         if (userData != null) {
-          final user = User.fromJson(userData);
+          var user = User.fromJson(userData);
+          // Merge with registration data to ensure fields like nameAr/nameEn are preserved
+          // if the server response is incomplete
+          user = user.copyWith(
+            nameAr: user.nameAr ?? nameAr,
+            nameEn: user.nameEn ?? nameEn,
+            username: user.username ?? username,
+            email: user.email ?? email,
+            phone: user.phone ?? phone,
+          );
           await _userRepository.saveUser(user);
+          await _setLoggedIn(true, userId: user.id);
         }
       }
 
@@ -332,10 +342,28 @@ class AuthService {
         },
       );
 
-      return ApiResponse.fromJson(
+      final apiResponse = ApiResponse.fromJson(
         response.data,
         (data) => User.fromJson(data as Map<String, dynamic>),
       );
+
+      if (apiResponse.success && apiResponse.data != null) {
+        // Merge server response with the data we just successfully sent
+        // This is crucial because the server might return a partial user object
+        final updatedUser = apiResponse.data!.copyWith(
+          nameAr: nameAr ?? apiResponse.data!.nameAr,
+          nameEn: nameEn ?? apiResponse.data!.nameEn,
+          username: username ?? apiResponse.data!.username,
+          email: email ?? apiResponse.data!.email,
+          phone: phone ?? apiResponse.data!.phone,
+          language: language ?? apiResponse.data!.language,
+        );
+        
+        final mergedUser = await _userRepository.saveUser(updatedUser);
+        return apiResponse.copyWith(data: mergedUser);
+      }
+
+      return apiResponse;
     } on DioException catch (e) {
       if (e.response != null) {
         return ApiResponse.fromJson(

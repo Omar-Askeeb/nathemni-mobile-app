@@ -47,6 +47,7 @@ class ProfileNotifier extends StateNotifier<ProfileState> {
 
     try {
       final user = await _authService.getLocalCurrentUser();
+      debugPrint('ProfileNotifier: Loaded user: ${user?.toJson()}');
       state = state.copyWith(user: user, isLoading: false);
     } catch (e) {
       debugPrint('Error loading profile: $e');

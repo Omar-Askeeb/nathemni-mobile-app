@@ -94,17 +94,12 @@ class AuthNotifier extends StateNotifier<AuthState> {
       );
 
       if (response.success) {
-        // Online registration successful - also save locally and auto-login
-        final user = await _authService.registerLocally(
-          nameAr: nameAr,
-          nameEn: nameEn,
-          username: username,
-          email: email,
-          phone: phone,
-          passwordHash: _hashPassword(password),
-        );
-        state = AuthAuthenticated(user);
-        return true;
+        // Online registration successful - user already saved locally by AuthService.register
+        final user = await _authService.getLocalCurrentUser();
+        if (user != null) {
+          state = AuthAuthenticated(user);
+          return true;
+        }
       }
       // If online failed, fall through to local registration
     } catch (e) {
