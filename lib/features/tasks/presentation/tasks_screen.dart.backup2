@@ -1,0 +1,467 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../providers/tasks_providers.dart';
+import '../data/task_local_model.dart';
+import 'add_task_screen.dart';
+import 'task_details_screen.dart';
+import '../../../core/navigation/app_drawer.dart';
+import '../../../core/utils/arabic_numbers.dart';
+
+class TasksScreen extends ConsumerWidget {
+  const TasksScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tasksAsync = ref.watch(tasksProvider);
+    final isOnline = ref.watch(isOnlineProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('المهام والتنظيم اليومي'),
+        centerTitle: true,
+        actions: [
+          // Sync indicator
+          isOnline.when(
+            data: (online) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Icon(
+                online ? Icons.cloud_done : Icons.cloud_off,
+                color: online ? Colors.green : Colors.grey,
+              ),
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
+        ],
+      ),
+      drawer: const AppDrawer(),
+      body: tasksAsync.when(
+        data: (tasks) {
+          if (tasks.isEmpty) {
+            return _buildEmptyState(context);
+          }
+          return _buildTasksList(context, ref, tasks);
+        },
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, stack) => Center(
+          child: Text('خطأ: ${error.toString()}'),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AddTaskScreen()),
+          );
+        },
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.task_alt,
+            size: 80,
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'لا توجد مهام',
+            style: Theme.of(context).textTheme.headlineSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'اضغط على + لإضافة مهمة جديدة',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTasksList(
+    BuildContext context,
+    WidgetRef ref,
+    List<TaskLocalModel> tasks,
+  ) {
+    // Group tasks by status
+    final pending = tasks.where((t) => t.status == 'pending').toList();
+    final inProgress = tasks.where((t) => t.status == 'in_progress').toList();
+    final completed = tasks.where((t) => t.status == 'completed').toList();
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        // Statistics Cards
+        _buildStatsCards(context, pending.length, inProgress.length,
+            completed.length, tasks.length),
+        const SizedBox(height: 24),
+
+        // Pending Tasks
+        if (pending.isNotEmpty) ...[
+          _buildSectionHeader(context, 'قيد الانتظار', pending.length),
+          const SizedBox(height: 8),
+          ...pending.map((task) => _buildTaskCard(context, ref, task)),
+          const SizedBox(height: 16),
+        ],
+
+        // In Progress Tasks
+        if (inProgress.isNotEmpty) ...[
+          _buildSectionHeader(context, 'قيد التنفيذ', inProgress.length),
+          const SizedBox(height: 8),
+          ...inProgress.map((task) => _buildTaskCard(context, ref, task)),
+          const SizedBox(height: 16),
+        ],
+
+        // Completed Tasks
+        if (completed.isNotEmpty) ...[
+          _buildSectionHeader(context, 'مكتملة', completed.length),
+          const SizedBox(height: 8),
+          ...completed.map((task) => _buildTaskCard(context, ref, task)),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStatsCards(
+    BuildContext context,
+    int pending,
+    int inProgress,
+    int completed,
+    int total,
+  ) {
+    return Row(
+      children: [
+        Expanded(
+          child: _buildStatCard(
+            context,
+            'الكل',
+            total.toString(),
+            Colors.blue,
+            Icons.list_alt,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildStatCard(
+            context,
+            'قيد التنفيذ',
+            (pending + inProgress).toString(),
+            Colors.orange,
+            Icons.pending_actions,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _buildStatCard(
+            context,
+            'مكتملة',
+            completed.toString(),
+            Colors.green,
+            Icons.check_circle,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatCard(
+    BuildContext context,
+    String label,
+    String value,
+    Color color,
+    IconData icon,
+  ) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(BuildContext context, String title, int count) {
+    return Row(
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
+        const SizedBox(width: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            count.toString(),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTaskCard(
+    BuildContext context,
+    WidgetRef ref,
+    TaskLocalModel task,
+  ) {
+    final isOverdue = task.isOverdue;
+    final dateFormat = DateFormat('yyyy-MM-dd', 'ar');
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: Checkbox(
+          value: task.isCompleted,
+          onChanged: (value) {
+            if (value == true) {
+              ref.read(tasksProvider.notifier).completeTask(task.id!);
+            }
+          },
+          shape: const CircleBorder(),
+        ),
+        title: Text(
+          task.title,
+          style: TextStyle(
+            decoration:
+                task.isCompleted ? TextDecoration.lineThrough : null,
+            color: task.isCompleted ? Colors.grey : null,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (task.description != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                task.description!,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: task.isCompleted ? Colors.grey : null,
+                ),
+              ),
+            ],
+            if (task.dueDate != null) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(
+                    Icons.calendar_today,
+                    size: 14,
+                    color: isOverdue ? Colors.red : Colors.grey,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    ArabicNumbers.formatDate(
+                      dateFormat.format(task.dueDate!),
+                    ),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isOverdue ? Colors.red : Colors.grey,
+                    ),
+                  ),
+                  if (isOverdue) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'متأخر',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.red,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+            // Sync status indicator
+            if (task.syncStatus == 'pending') ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(
+                    Icons.sync,
+                    size: 14,
+                    color: Colors.orange,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'بانتظار المزامنة',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.orange,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ],
+        ),
+        trailing: _buildPriorityBadge(context, task.priority),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TaskDetailsScreen(task: task),
+            ),
+          );
+        },
+        onLongPress: () {
+          _showTaskActions(context, ref, task);
+        },
+      ),
+    );
+  }
+
+  Widget _buildPriorityBadge(BuildContext context, String priority) {
+    Color color;
+    String label;
+
+    switch (priority) {
+      case 'high':
+        color = Colors.red;
+        label = 'عالية';
+        break;
+      case 'medium':
+        color = Colors.orange;
+        label = 'متوسطة';
+        break;
+      case 'low':
+        color = Colors.green;
+        label = 'منخفضة';
+        break;
+      default:
+        color = Colors.grey;
+        label = 'عادية';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  void _showTaskActions(
+    BuildContext context,
+    WidgetRef ref,
+    TaskLocalModel task,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.check_circle),
+              title: const Text('تعيين كمكتملة'),
+              onTap: () {
+                Navigator.pop(context);
+                ref.read(tasksProvider.notifier).completeTask(task.id!);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('تعديل'),
+              onTap: () {
+                Navigator.pop(context);
+                // TODO: Navigate to edit screen
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: const Text('حذف', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(context);
+                _confirmDelete(context, ref, task);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDelete(
+    BuildContext context,
+    WidgetRef ref,
+    TaskLocalModel task,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('حذف المهمة'),
+        content: Text('هل أنت متأكد من حذف "${task.title}"؟'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ref.read(tasksProvider.notifier).deleteTask(task.id!);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+  }
+}
